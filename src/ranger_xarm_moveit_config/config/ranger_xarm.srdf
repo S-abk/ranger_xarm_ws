@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="ranger_xarm6">
+  <!--
+    The manipulator planning chain deliberately starts at the vendor xArm
+    link_base rather than base_link. All Ranger/custom structure remains in the
+    same RobotModel and therefore remains active collision geometry.
+
+    With the standard UFACTORY gripper, link_tcp is fixed to the gripper base,
+    so the arm IK target includes the installed gripper TCP without adding the
+    gripper drive joint to the arm planning group.
+  -->
+  <group name="xarm6">
+    <chain base_link="xarm_link_base" tip_link="xarm_link_tcp"/>
+  </group>
+
+  <group name="xarm_gripper">
+    <link name="xarm_xarm_gripper_base_link"/>
+    <link name="xarm_left_outer_knuckle"/>
+    <link name="xarm_left_finger"/>
+    <link name="xarm_left_inner_knuckle"/>
+    <link name="xarm_right_inner_knuckle"/>
+    <link name="xarm_right_outer_knuckle"/>
+    <link name="xarm_right_finger"/>
+    <link name="xarm_link_tcp"/>
+    <joint name="xarm_drive_joint"/>
+  </group>
+
+  <group_state name="home" group="xarm6">
+    <joint name="xarm_joint1" value="0"/>
+    <joint name="xarm_joint2" value="0"/>
+    <joint name="xarm_joint3" value="0"/>
+    <joint name="xarm_joint4" value="0"/>
+    <joint name="xarm_joint5" value="0"/>
+    <joint name="xarm_joint6" value="0"/>
+  </group_state>
+
+  <group_state name="hold_up" group="xarm6">
+    <joint name="xarm_joint1" value="0"/>
+    <joint name="xarm_joint2" value="0"/>
+    <joint name="xarm_joint3" value="0"/>
+    <joint name="xarm_joint4" value="0"/>
+    <joint name="xarm_joint5" value="-1.5708"/>
+    <joint name="xarm_joint6" value="0"/>
+  </group_state>
+
+  <group_state name="open" group="xarm_gripper">
+    <joint name="xarm_drive_joint" value="0"/>
+  </group_state>
+  <group_state name="closed" group="xarm_gripper">
+    <joint name="xarm_drive_joint" value="0.849"/>
+  </group_state>
+
+  <end_effector name="xarm_gripper" parent_link="xarm_link6" group="xarm_gripper" parent_group="xarm6"/>
+
+  <!-- Mimic joints are driven by xarm_drive_joint, not independently planned. -->
+  <passive_joint name="xarm_left_finger_joint"/>
+  <passive_joint name="xarm_left_inner_knuckle_joint"/>
+  <passive_joint name="xarm_right_inner_knuckle_joint"/>
+  <passive_joint name="xarm_right_outer_knuckle_joint"/>
+  <passive_joint name="xarm_right_finger_joint"/>
+
+  <!-- Standard xArm6 adjacent / never-colliding pairs, based on UFACTORY's SRDF. -->
+  <disable_collisions link1="xarm_link_base" link2="xarm_link1" reason="Adjacent"/>
+  <disable_collisions link1="xarm_link_base" link2="xarm_link2" reason="Never"/>
+  <disable_collisions link1="xarm_link1" link2="xarm_link2" reason="Adjacent"/>
+  <disable_collisions link1="xarm_link1" link2="xarm_link3" reason="Never"/>
+  <disable_collisions link1="xarm_link2" link2="xarm_link3" reason="Adjacent"/>
+  <disable_collisions link1="xarm_link2" link2="xarm_link4" reason="Never"/>
+  <disable_collisions link1="xarm_link3" link2="xarm_link4" reason="Adjacent"/>
+  <disable_collisions link1="xarm_link3" link2="xarm_link5" reason="Never"/>
+  <disable_collisions link1="xarm_link3" link2="xarm_link6" reason="Never"/>
+  <disable_collisions link1="xarm_link4" link2="xarm_link5" reason="Adjacent"/>
+  <disable_collisions link1="xarm_link4" link2="xarm_link6" reason="Never"/>
+  <disable_collisions link1="xarm_link5" link2="xarm_link6" reason="Adjacent"/>
+  <disable_collisions link1="xarm_link6" link2="xarm_link_eef" reason="Adjacent"/>
+
+  <!-- Gripper internal adjacency / permanently-close geometry. -->
+  <disable_collisions link1="xarm_link6" link2="xarm_xarm_gripper_base_link" reason="Adjacent"/>
+  <disable_collisions link1="xarm_link5" link2="xarm_xarm_gripper_base_link" reason="Never"/>
+  <disable_collisions link1="xarm_link_eef" link2="xarm_xarm_gripper_base_link" reason="Adjacent"/>
+  <disable_collisions link1="xarm_left_outer_knuckle" link2="xarm_xarm_gripper_base_link" reason="Adjacent"/>
+  <disable_collisions link1="xarm_left_inner_knuckle" link2="xarm_xarm_gripper_base_link" reason="Adjacent"/>
+  <disable_collisions link1="xarm_right_outer_knuckle" link2="xarm_xarm_gripper_base_link" reason="Adjacent"/>
+  <disable_collisions link1="xarm_right_inner_knuckle" link2="xarm_xarm_gripper_base_link" reason="Adjacent"/>
+  <disable_collisions link1="xarm_left_finger" link2="xarm_left_outer_knuckle" reason="Adjacent"/>
+  <disable_collisions link1="xarm_left_finger" link2="xarm_left_inner_knuckle" reason="Default"/>
+  <disable_collisions link1="xarm_right_finger" link2="xarm_right_outer_knuckle" reason="Adjacent"/>
+  <disable_collisions link1="xarm_right_finger" link2="xarm_right_inner_knuckle" reason="Default"/>
+  <disable_collisions link1="xarm_left_outer_knuckle" link2="xarm_left_inner_knuckle" reason="Never"/>
+  <disable_collisions link1="xarm_right_outer_knuckle" link2="xarm_right_inner_knuckle" reason="Never"/>
+  <disable_collisions link1="xarm_left_finger" link2="xarm_right_finger" reason="Never"/>
+
+  <!--
+    Installed fixed geometry. These pairs are intentionally disabled only where
+    the CAD/primitive envelopes represent bolted-together or mounted objects.
+    Moving arm links remain collision-checked against all Ranger obstacles.
+  -->
+  <disable_collisions link1="ranger_cad_link" link2="custom_structure_link" reason="Mounted"/>
+  <disable_collisions link1="ranger_cad_link" link2="rplidar_body_link" reason="Mounted"/>
+  <disable_collisions link1="custom_structure_link" link2="rplidar_body_link" reason="Mounted"/>
+  <disable_collisions link1="custom_structure_link" link2="os0_mount_link" reason="Mounted"/>
+  <disable_collisions link1="custom_structure_link" link2="d435_mount_link" reason="Mounted"/>
+  <disable_collisions link1="custom_structure_link" link2="laptop_collision_link" reason="Mounted"/>
+  <disable_collisions link1="custom_structure_link" link2="xarm_link_base" reason="Mounted"/>
+</robot>

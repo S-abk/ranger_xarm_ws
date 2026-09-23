@@ -1,0 +1,37 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 150
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    xarm6_traj_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+xarm6_traj_controller:
+  ros__parameters:
+    joints:
+      - xarm_joint1
+      - xarm_joint2
+      - xarm_joint3
+      - xarm_joint4
+      - xarm_joint5
+      - xarm_joint6
+    command_interfaces:
+      - position
+      - velocity
+    state_interfaces:
+      - position
+      - velocity
+    state_publish_rate: 50.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    constraints:
+      goal_time: 1.0
+      stopped_velocity_tolerance: 0.01
+      xarm_joint1: {trajectory: 1.0, goal: 0.02}
+      xarm_joint2: {trajectory: 1.0, goal: 0.02}
+      xarm_joint3: {trajectory: 1.0, goal: 0.02}
+      xarm_joint4: {trajectory: 1.0, goal: 0.02}
+      xarm_joint5: {trajectory: 1.0, goal: 0.02}
+      xarm_joint6: {trajectory: 1.0, goal: 0.02}

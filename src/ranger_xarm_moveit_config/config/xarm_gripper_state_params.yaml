@@ -1,0 +1,7 @@
+# Additional parameters consumed by the internal UFACTORY `ufactory_driver`
+# node created by UFRobotSystemHardware.  The stock xarm_params.yaml leaves this
+# service disabled; enable only the read-only position query needed by the bridge.
+ufactory_driver:
+  ros__parameters:
+    services:
+      get_gripper_position: true

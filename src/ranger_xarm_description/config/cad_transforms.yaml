@@ -1,0 +1,48 @@
+# Source: Ranger_mini_Xarm6_custom_box Copy_cam.step
+# ROS REP-103: +X forward (RPLIDAR end), +Y left, +Z up.
+# Fusion -> ROS: x_ros=-x_fusion, y_ros=z_fusion, z_ros=y_fusion.
+frames:
+  base_footprint:
+    parent: base_link
+    xyz: [0.0, 0.0, -0.327028595]
+    rpy: [0.0, 0.0, 0.0]
+    method: ranger_visual_mesh_lowest_wheel_tread
+    confidence: high
+    note: Use this as the RViz fixed frame to place the XY grid at ground level.
+
+  xarm_mount_link:
+    parent: base_link
+    xyz: [0.0, 0.0, 0.391225]
+    rpy: [0.0, 0.0, 0.0]
+    method: physical_mounting_plate_top_and_flange_axis
+    confidence: high
+    note: Imported XI1305 assembly origin is intentionally bypassed.
+
+  laser_frame:
+    parent: base_link
+    xyz: [0.248386751, 0.0, 0.069000000]
+    rpy: [0.0, 0.0, 0.0]
+    method: physical_scan_axis_plus_laser_working_plane
+    confidence: medium_high
+    note: Imported IGES origin is intentionally bypassed; frame follows the requested ROS laser convention.
+
+  os0_mount_link:
+    parent: base_link
+    xyz: [-0.375000008, 0.0, 1.146025000]
+    rpy: [1.570796327, 0.0, 1.570796327]
+    method: updated_cad_occurrence_frame
+    confidence: high
+
+  d435_mount_link:
+    parent: base_link
+    xyz: [-0.319950008, 0.0, 1.061025000]
+    rpy: [1.570796327, 0.0, 1.570796327]
+    method: updated_cad_occurrence_frame_no_10deg_tilt
+    confidence: high
+
+  laptop_mount_surface:
+    parent: base_link
+    xyz: [-0.295278, 0.0, 0.388525]
+    rpy: [0.0, 0.0, 3.141592654]
+    method: cad_support_surface_plus_confirmed_180deg_yaw
+    confidence: medium_high

@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>ranger_xarm_bringup</name>
+  <version>0.5.1</version>
+  <description>Base bringup for the Ranger Mini V3 + xArm 6 mobile manipulator: CAN driver, odometry TF and the cmd_vel deadman.</description>
+  <maintainer email="user@example.com">Ranger xArm project</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>ranger_base</exec_depend>
+  <exec_depend>ranger_msgs</exec_depend>
+  <exec_depend>ranger_xarm_description</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

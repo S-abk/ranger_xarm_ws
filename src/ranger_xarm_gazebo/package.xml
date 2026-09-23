@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://relaxng.org/ns/structure/1.0"?>
+<package format="3">
+  <name>ranger_xarm_gazebo</name>
+  <version>1.0.0</version>
+  <description>
+    Gazebo (gz) simulation of the Ranger Mini + xArm 6 platform: the same URDF
+    the real robot uses, spawned into a gz world with gz_ros2_control driving
+    the arm. Nothing in this package is needed to run the physical robot.
+  </description>
+  <maintainer email="solanrewaju2020@fau.edu">Ranger xArm maintainers</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>ranger_xarm_description</exec_depend>
+  <exec_depend>ranger_xarm_moveit_config</exec_depend>
+  <exec_depend>xarm_controller</exec_depend>
+  <exec_depend>xarm_description</exec_depend>
+  <exec_depend>uf_ros_lib</exec_depend>
+
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>gz_ros2_control</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

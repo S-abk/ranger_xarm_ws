@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Locked CAD -> ROS convention:
+       Fusion -X = ROS +X forward
+       Fusion +Z = ROS +Y left
+       Fusion +Y = ROS +Z up -->
+  <xacro:property name="xarm_mount_x_nom" value="0.0"/>
+  <xacro:property name="xarm_mount_y_nom" value="0.0"/>
+  <xacro:property name="xarm_mount_z_nom" value="0.391225000"/>
+
+  <xacro:property name="rplidar_x_nom" value="0.248386751"/>
+  <xacro:property name="rplidar_y_nom" value="0.0"/>
+  <xacro:property name="rplidar_z_nom" value="0.069000000"/>
+
+  <xacro:property name="os0_x_nom" value="-0.375000008"/>
+  <xacro:property name="os0_y_nom" value="0.0"/>
+  <xacro:property name="os0_z_nom" value="1.146025000"/>
+
+  <xacro:property name="d435_x_nom" value="-0.319950008"/>
+  <xacro:property name="d435_y_nom" value="0.0"/>
+  <xacro:property name="d435_z_nom" value="1.061025000"/>
+
+  <xacro:property name="laptop_mount_x_nom" value="-0.295278"/>
+  <xacro:property name="laptop_mount_y_nom" value="0.0"/>
+  <xacro:property name="laptop_mount_z_nom" value="0.388525"/>
+  <!-- Lowest point of Ranger visual mesh (wheel tread) relative to base_link. -->
+  <xacro:property name="ground_z_nom" value="-0.327028595"/>
+</robot>

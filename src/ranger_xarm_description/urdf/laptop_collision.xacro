@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="generic_laptop_collision" params="parent:='base_link' mount_x mount_y mount_z width:=0.36 depth:=0.25 base_thickness:=0.022 screen_height:=0.24 screen_thickness:=0.012 open_angle_deg:=110.0 clearance:=0.015 show_visual:=true">
+    <xacro:property name="w_col" value="${float(width)+2.0*float(clearance)}"/>
+    <xacro:property name="d_col" value="${float(depth)+2.0*float(clearance)}"/>
+    <xacro:property name="bt_col" value="${float(base_thickness)+2.0*float(clearance)}"/>
+    <xacro:property name="sh_col" value="${float(screen_height)+2.0*float(clearance)}"/>
+    <xacro:property name="st_col" value="${float(screen_thickness)+2.0*float(clearance)}"/>
+    <xacro:property name="screen_tilt" value="${pi/2.0-float(open_angle_deg)*pi/180.0}"/>
+    <xacro:property name="hinge_x" value="${-float(depth)/2.0}"/>
+    <xacro:property name="screen_center_x" value="${hinge_x+0.5*float(screen_height)*sin(screen_tilt)}"/>
+    <xacro:property name="screen_center_z" value="${float(base_thickness)+0.5*float(screen_height)*cos(screen_tilt)}"/>
+
+    <link name="laptop_collision_link">
+      <collision name="laptop_base_collision"><origin xyz="0 0 ${float(base_thickness)/2.0}"/><geometry><box size="${d_col} ${w_col} ${bt_col}"/></geometry></collision>
+      <collision name="laptop_screen_collision"><origin xyz="${screen_center_x} 0 ${screen_center_z}" rpy="0 ${screen_tilt} 0"/><geometry><box size="${st_col} ${w_col} ${sh_col}"/></geometry></collision>
+      <xacro:if value="${show_visual}">
+        <visual name="laptop_base_visual"><origin xyz="0 0 ${float(base_thickness)/2.0}"/><geometry><box size="${float(depth)} ${float(width)} ${float(base_thickness)}"/></geometry><material name="generic_laptop"><color rgba="0.12 0.12 0.12 0.65"/></material></visual>
+        <visual name="laptop_screen_visual"><origin xyz="${screen_center_x} 0 ${screen_center_z}" rpy="0 ${screen_tilt} 0"/><geometry><box size="${float(screen_thickness)} ${float(width)} ${float(screen_height)}"/></geometry><material name="generic_laptop_screen"><color rgba="0.08 0.08 0.08 0.65"/></material></visual>
+      </xacro:if>
+    </link>
+    <joint name="base_to_laptop_collision" type="fixed"><parent link="${parent}"/><child link="laptop_collision_link"/><origin xyz="${mount_x} ${mount_y} ${mount_z}" rpy="0 0 ${pi}"/></joint>
+  </xacro:macro>
+</robot>

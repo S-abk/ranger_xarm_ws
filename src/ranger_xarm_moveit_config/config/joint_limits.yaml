@@ -1,0 +1,13 @@
+# MoveIt velocity/acceleration overrides. Position limits remain authoritative in
+# the UFACTORY URDF. Conservative scaling is intentional for the mobile platform.
+robot_description_planning:
+  default_velocity_scaling_factor: 0.10
+  default_acceleration_scaling_factor: 0.10
+  joint_limits:
+    xarm_joint1: {has_velocity_limits: true, max_velocity: 2.0, has_acceleration_limits: true, max_acceleration: 2.0}
+    xarm_joint2: {has_velocity_limits: true, max_velocity: 2.0, has_acceleration_limits: true, max_acceleration: 2.0}
+    xarm_joint3: {has_velocity_limits: true, max_velocity: 2.0, has_acceleration_limits: true, max_acceleration: 2.0}
+    xarm_joint4: {has_velocity_limits: true, max_velocity: 2.0, has_acceleration_limits: true, max_acceleration: 2.0}
+    xarm_joint5: {has_velocity_limits: true, max_velocity: 2.0, has_acceleration_limits: true, max_acceleration: 2.0}
+    xarm_joint6: {has_velocity_limits: true, max_velocity: 2.0, has_acceleration_limits: true, max_acceleration: 2.0}
+    xarm_drive_joint: {has_velocity_limits: true, max_velocity: 1.0, has_acceleration_limits: true, max_acceleration: 2.0}
