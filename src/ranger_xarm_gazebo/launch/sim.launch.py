@@ -97,14 +97,19 @@ def launch_setup(context, *args, **kwargs):
         parameters=[{'use_sim_time': True}],
     )
 
-    jsb = Node(package='controller_manager', executable='spawner',
-               arguments=['joint_state_broadcaster',
-                          '--controller-manager', '/controller_manager'],
-               output='screen')
-    arm = Node(package='controller_manager', executable='spawner',
-               arguments=['{}xarm6_traj_controller'.format(prefix),
-                          '--controller-manager', '/controller_manager'],
-               output='screen')
+    def spawner(name):
+        return Node(package='controller_manager', executable='spawner',
+                    arguments=[name, '--controller-manager',
+                               '/controller_manager'],
+                    output='screen')
+
+    jsb = spawner('joint_state_broadcaster')
+    arm = spawner('{}xarm6_traj_controller'.format(prefix))
+    # add_gripper loads the gripper hardware component, so the controller that
+    # claims it has to be spawned too. Without this the gripper joint is
+    # simulated but unusable, and the only sign is a controller_manager line
+    # saying the component registered no statistics -- not an error.
+    gripper = spawner('{}xarm_gripper_traj_controller'.format(prefix))
 
     rviz = Node(
         package='rviz2', executable='rviz2', output='screen',
@@ -119,8 +124,10 @@ def launch_setup(context, *args, **kwargs):
         # inside the spawned model, so spawning them earlier is a race.
         RegisterEventHandler(OnProcessExit(target_action=spawn,
                                            on_exit=[jsb])),
-        RegisterEventHandler(OnProcessExit(target_action=jsb,
-                                           on_exit=[arm])),
+        RegisterEventHandler(OnProcessExit(
+            target_action=jsb,
+            on_exit=[arm] if add_gripper.lower() not in ('true', '1', 'yes')
+            else [arm, gripper])),
         rviz,
     ]
 
