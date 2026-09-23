@@ -1,0 +1,62 @@
+# Tank-cavity perception exemption, for skimming NON-empty tanks.
+#
+# sum.md's validated insertion/roll-selection results assumed an empty tank.
+# Real tanks have contents (water, media) that the Ouster sees as solid
+# returns, which will make MoveIt refuse to plan an insertion trajectory
+# through them. This filter removes ONLY points inside a precisely-known
+# interior box (below rim, inside walls, minus a margin) so the cavity reads
+# as free space for planning -- while the walls/rim themselves stay OUTSIDE
+# the box and remain fully collision-checked.
+#
+# This is a SEPARATE instance of trusted_manipulation_volume_filter.py from
+# the existing base_link self-body filter. Chain them in series:
+#   /ouster/points -> [base_link filter] -> points_stage1
+#                   -> [this tank_frame filter] -> /ouster/points_moveit
+#
+# IMPORTANT: this must only be enabled once tank_frame has been freshly
+# taught for the CURRENT tank this session. Never reuse geometry numbers
+# from a different tank or from sum.md -- those were measured for a
+# different, empty tank and do not apply here.
+#
+# TODO before first use today: replace every value below with a fresh
+# measurement of the ACTUAL tank being used. min/max_xyz_m are in tank_frame
+# coordinates (+X = longitudinal skim direction, +Y = Ranger left /
+# cross-track, +Z = vertical, per sum.md sec 3 convention).
+
+filter_frame: tank_frame
+
+input_topic: /ouster/points_stage1
+output_topic: /ouster/points_moveit
+
+enable_service: /skimmer/tank_cavity_clearance_enable
+enabled_at_startup: false
+
+max_filter_rate_hz: 2.0
+tf_timeout_sec: 0.5
+
+clear_octomap_on_toggle: true
+clear_octomap_service: /clear_octomap
+rebuild_hold_sec: 2.0
+
+# Tank 1 (right of robot), measured 2026-09-09:
+#   rim:   near_wall_y_m = -0.44, width_m = 1.84 -> far_wall_y_m = -2.28
+#   floor: width_m = 1.60 (walls flare out ~0.12m per side over the 0.68m
+#          depth, i.e. ~10 deg from vertical -- modest taper)
+#   rim_z_m = 0.81, depth_m = 0.68 -> floor_z_m = 0.13
+#   length_m = 6.0, robot ~1.10m from one edge
+#
+# Y bounds use the FLOOR-level width (assumed symmetric taper about the
+# rim centerline) applied uniformly across the whole Z range, since this
+# filter can only do an axis-aligned box, not a tapered frustum. This is
+# intentionally conservative: it will under-exempt real free water near
+# the walls close to the rim, but it will never overlap the true wall
+# surface at any height.
+#
+# X bounds ASSUME tank_frame is taught at the robot's CURRENT position,
+# with the 1.10m-away edge BEHIND it (start of the skim run). If the
+# near edge is actually AHEAD of the robot instead, or if the robot
+# repositions before teaching, these bounds need to be recomputed.
+zones:
+  - name: tank_interior_cavity
+    min_xyz_m: [-1.00, -2.130, 0.180]
+    max_xyz_m: [4.80, -0.590, 0.780]

@@ -1,0 +1,29 @@
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - xarm6_traj_controller
+    - xarm_gripper
+
+  xarm6_traj_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - xarm_joint1
+      - xarm_joint2
+      - xarm_joint3
+      - xarm_joint4
+      - xarm_joint5
+      - xarm_joint6
+
+  # MoveIt talks to the local proxy at /xarm_gripper/gripper_action. The proxy
+  # forwards to UFACTORY's prefixed native server
+  # /xarm_xarm_gripper/gripper_action and mirrors feedback into xarm_drive_joint.
+  xarm_gripper:
+    type: GripperCommand
+    action_ns: gripper_action
+    default: true
+    max_effort: 0.0
+    joints:
+      - xarm_drive_joint

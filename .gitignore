@@ -1,0 +1,10 @@
+# colcon output
+build/
+install/
+log/
+
+# pulled by `vcs import src < ranger_xarm.repos`, not committed here
+src/xarm_ros2/
+
+__pycache__/
+*.pyc

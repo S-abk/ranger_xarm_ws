@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="ranger_sensor_frames" params="parent:='base_link' rplidar_x rplidar_y rplidar_z os0_x os0_y os0_z d435_x d435_y d435_z show_sensor_collision:=true">
+    <link name="laser_frame"/>
+    <joint name="base_to_laser_frame" type="fixed">
+      <parent link="${parent}"/><child link="laser_frame"/>
+      <origin xyz="${rplidar_x} ${rplidar_y} ${rplidar_z}" rpy="0 0 0"/>
+    </joint>
+    <link name="rplidar_body_link">
+      <visual><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/rplidar_a1_cad.stl" scale="0.001 0.001 0.001"/></geometry><material name="rplidar_material"><color rgba="0.22 0.22 0.22 1"/></material></visual>
+      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0.009556 0 -0.014480"/><geometry><box size="0.108 0.085 0.056"/></geometry></collision></xacro:if>
+    </link>
+    <joint name="laser_frame_to_rplidar_body" type="fixed"><parent link="laser_frame"/><child link="rplidar_body_link"/><origin xyz="0 0 0" rpy="0 0 0"/></joint>
+
+    <link name="os0_mount_link">
+      <visual><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/ouster_os0_cad.stl" scale="0.001 0.001 0.001"/></geometry><material name="os0_material"><color rgba="0.28 0.28 0.28 1"/></material></visual>
+      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0 0.0255 0"/><geometry><box size="0.120 0.106 0.120"/></geometry></collision></xacro:if>
+    </link>
+    <joint name="base_to_os0_mount" type="fixed"><parent link="${parent}"/><child link="os0_mount_link"/><origin xyz="${os0_x} ${os0_y} ${os0_z}" rpy="${pi/2} 0 ${pi/2}"/></joint>
+
+    <link name="os_sensor"/>
+    <joint name="os0_mount_to_os_sensor" type="fixed">
+      <parent link="os0_mount_link"/>
+      <child link="os_sensor"/>
+      <origin xyz="0 0 0" rpy="${-pi/2} ${-pi/2} 0"/>
+    </joint>
+
+    <link name="d435_mount_link">
+      <visual><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/realsense_d435_cad.stl" scale="0.001 0.001 0.001"/></geometry><material name="d435_material"><color rgba="0.18 0.18 0.18 1"/></material></visual>
+      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="-0.000273 -0.000167 -0.012227"/><geometry><box size="0.092 0.026 0.026"/></geometry></collision></xacro:if>
+    </link>
+    <joint name="base_to_d435_mount" type="fixed"><parent link="${parent}"/><child link="d435_mount_link"/><origin xyz="${d435_x} ${d435_y} ${d435_z}" rpy="${pi/2} 0 ${pi/2}"/></joint>
+
+    <!-- Separate the physical CAD occurrence frame from the ROS camera semantic frame.
+         The D435 CAD mesh local axes are: X across camera width, Y up/down, Z viewing depth.
+         RealSense/REP-103 camera_link semantics are: X forward, Y left, Z up.
+         With the existing CAD occurrence rotation, this fixed permutation makes d435_link
+         globally aligned with base_link while leaving the mesh placement unchanged. -->
+    <link name="d435_link"/>
+    <joint name="d435_mount_to_link" type="fixed">
+      <parent link="d435_mount_link"/><child link="d435_link"/>
+      <origin xyz="0 0 0" rpy="${-pi/2} ${-pi/2} 0"/>
+    </joint>
+  </xacro:macro>
+</robot>

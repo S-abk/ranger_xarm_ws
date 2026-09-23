@@ -1,0 +1,49 @@
+# Optional trusted manipulation volume for MoveIt perception.
+#
+# IMPORTANT:
+# Any lidar return inside an ENABLED trusted zone is deliberately removed
+# before MoveIt's occupancy-map updater sees it. Keep zones small and confined
+# to robot-owned space.
+#
+# Disabled = raw Ouster cloud passes through unchanged.
+# Enabled  = configured base_link boxes are removed.
+#
+# We will fill the actual zone bounds after confirming the Ranger footprint
+# geometry. Enable requests are refused while zones is empty.
+
+filter_frame: base_link
+
+input_topic: /ouster/points
+output_topic: /ouster/points_stage1
+
+enable_service: /skimmer/trusted_volume_enable
+enabled_at_startup: false
+
+# MoveIt's OctoMap updater is currently limited to ~2 Hz.
+max_filter_rate_hz: 2.0
+tf_timeout_sec: 0.5
+
+# A mode change invalidates the old occupancy interpretation.
+clear_octomap_on_toggle: true
+clear_octomap_service: /clear_octomap
+rebuild_hold_sec: 2.0
+
+# Axis-aligned boxes in base_link coordinates.
+#
+# Example syntax only:
+#
+# zones:
+#   - name: inner_robot_owned_space
+#     min_xyz_m: [-0.10, -0.20, 0.20]
+#     max_xyz_m: [ 0.20,  0.20, 0.90]
+#
+# Do NOT use example values without validating them against the real robot.
+zones:
+  - name: manipulator_inner_footprint
+    # Negative-Y boundary includes a 15 mm guard band,
+    # equal to half the 0.03 m MoveIt OctoMap voxel size.
+    # This prevents robot-owned returns immediately outside
+    # the nominal footprint from creating voxels that overlap
+    # the trusted manipulation region.
+    min_xyz_m: [-0.18, -0.195, 0.04]
+    max_xyz_m: [0.35, 0.18, 1.20]

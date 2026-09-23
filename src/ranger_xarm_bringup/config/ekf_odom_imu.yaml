@@ -1,0 +1,80 @@
+# robot_localization EKF: wheel odometry for speed, Ouster gyro for heading.
+#
+# WHY:  the Ranger derives yaw geometrically in DUAL_ACKERMAN,
+#         omega = 2*v*sin(phi_c)/wheelbase
+#       from the *commanded* steering angle, so it cannot observe tyre scrub.
+#       Measured against this same gyro the yaw is +9.4% high outdoors on the
+#       tank site but only +1.4% indoors on smooth floor -- it is surface
+#       dependent, so it cannot be fixed by correcting wheelbase/track.
+#       Fusing the gyro is robust to surface; a calibrated constant is not.
+#
+# WHAT IS FUSED, and what is deliberately NOT:
+#   /odom            vx, vy only.
+#                    NOT x/y  -- they are integrated along the bad heading.
+#                    NOT yaw or vyaw -- that IS the error we are removing.
+#   imu (corrected)  vyaw only.
+#                    NOT orientation -- the Ouster IMU publishes an identity
+#                    quaternion with orientation_covariance[0] = -1, i.e. no
+#                    absolute heading. Fusing it would inject a fake yaw of 0.
+#                    NOT linear acceleration -- wheel speed is far better, and
+#                    double-integrating MEMS accel adds drift for nothing.
+#
+# The IMU input must be the BIAS-CORRECTED topic. Raw gyro-z carries a
+# +0.335 deg/s bias (stable to 0.002 deg/s over three days, measured
+# 2026-09-09/12) which integrates to ~90 deg over a 271 s run.
+ekf_odom_imu:
+  ros__parameters:
+    frequency: 50.0
+    sensor_timeout: 0.2
+    two_d_mode: true                  # planar robot; zeroes z/roll/pitch
+    publish_tf: true                  # this node now owns odom -> base_footprint
+    publish_acceleration: false
+    print_diagnostics: true
+
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_footprint
+    world_frame: odom                 # odom-frame EKF: continuous, no jumps
+
+    # state order:  x  y  z  roll pitch yaw  vx vy vz  vroll vpitch vyaw  ax ay az
+    odom0: /odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, false,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+    odom0_nodelay: true
+
+    imu0: /ouster/imu_corrected
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_remove_gravitational_acceleration: true
+    imu0_queue_size: 20
+    imu0_nodelay: true
+
+    # Loose on the states we integrate, tight on the ones two_d_mode pins.
+    # NOTE: every entry must be a float. A bare `0` mixed with `0.02` makes
+    # rcl reject the whole file: "Sequence should be of same type".
+    process_noise_covariance: [0.020000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.020000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000001, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000001, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000001, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.010000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.050000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.050000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000001, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000001, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000001, 0.000000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.020000, 0.000000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.010000, 0.000000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.010000, 0.000000,
+                               0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000001]

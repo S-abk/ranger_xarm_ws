@@ -1,0 +1,11 @@
+# Upstream sources this workspace builds against.
+#   vcs import src < ranger_xarm.repos
+# Pinned to the commit this workspace was verified on. Bump deliberately:
+# xarm_ros2 supplies xarm_description, xarm_msgs, xarm_sdk, xarm_api and
+# xarm_controller, and the arm mount height and joint limits here are matched
+# to it.
+repositories:
+  xarm_ros2:
+    type: git
+    url: https://github.com/xArm-Developer/xarm_ros2.git
+    version: 3dc2b5e

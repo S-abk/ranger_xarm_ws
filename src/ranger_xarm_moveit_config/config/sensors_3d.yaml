@@ -1,0 +1,18 @@
+# MoveIt 3D perception from the Ouster lidar.
+
+sensors:
+  - ouster_pointcloud
+
+ouster_pointcloud:
+  sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+  point_cloud_topic: /ouster/points_moveit
+  max_range: 5.0
+  point_subsample: 2
+  padding_offset: 0.05
+  padding_scale: 1.0
+  max_update_rate: 2.0
+  filtered_cloud_topic: /moveit/ouster_filtered_points
+
+# Maintain the occupancy map in the mobile robot's odometry frame.
+octomap_frame: odom
+octomap_resolution: 0.03

@@ -1,0 +1,93 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ranger_xarm6">
+  <xacro:include filename="$(find ranger_xarm_description)/urdf/calibration.xacro"/>
+  <xacro:include filename="$(find ranger_xarm_description)/urdf/static_geometry.xacro"/>
+  <xacro:include filename="$(find ranger_xarm_description)/urdf/sensor_frames.xacro"/>
+  <xacro:include filename="$(find ranger_xarm_description)/urdf/laptop_collision.xacro"/>
+
+  <xacro:arg name="use_xarm" default="true"/>
+  <xacro:arg name="use_static_geometry" default="true"/>
+  <xacro:arg name="use_static_collision" default="true"/>
+  <xacro:arg name="add_gripper" default="true"/>
+  <xacro:arg name="model1300" default="true"/>
+  <xacro:arg name="robot_sn" default=""/>
+  <xacro:arg name="xarm_prefix" default="xarm_"/>
+  <xacro:arg name="xarm_mount_yaw" default="0.0"/>
+  <xacro:arg name="xarm_ros2_control_plugin" default="uf_robot_hardware/UFRobotSystemHardware"/>
+  <!-- Simulation hook. The default plugin above talks to the physical xArm
+       controller over Ethernet; a simulator supplies its own ros2_control
+       system plugin instead and needs the matching <gazebo> plugin block
+       emitted into the URDF. Both are off by default, so nothing changes for
+       hardware unless a launch file asks for it:
+         xarm_ros2_control_plugin:=gz_ros2_control/GazeboSimSystem
+         xarm_load_gazebo_plugin:=true
+         xarm_ros2_control_params:=/path/to/controllers.yaml -->
+  <xacro:arg name="xarm_load_gazebo_plugin" default="false"/>
+  <xacro:arg name="xarm_ros2_control_params" default=""/>
+  <xacro:arg name="xarm_robot_ip" default=""/>
+  <xacro:arg name="xarm_report_type" default="normal"/>
+  <xacro:arg name="xarm_velocity_control" default="false"/>
+  <xacro:arg name="xarm_baud_checkset" default="true"/>
+  <xacro:arg name="xarm_default_gripper_baud" default="2000000"/>
+
+  <xacro:arg name="xarm_dx" default="0.0"/><xacro:arg name="xarm_dy" default="0.0"/><xacro:arg name="xarm_dz" default="0.0"/>
+  <xacro:arg name="rplidar_dx" default="0.0"/><xacro:arg name="rplidar_dy" default="0.0"/><xacro:arg name="rplidar_dz" default="0.0"/>
+  <xacro:arg name="os0_dx" default="0.0"/><xacro:arg name="os0_dy" default="0.0"/><xacro:arg name="os0_dz" default="0.0"/>
+  <xacro:arg name="d435_dx" default="0.0"/><xacro:arg name="d435_dy" default="0.0"/><xacro:arg name="d435_dz" default="0.0"/>
+
+  <xacro:arg name="use_laptop_collision" default="true"/>
+  <xacro:arg name="laptop_width" default="0.36"/><xacro:arg name="laptop_depth" default="0.25"/>
+  <xacro:arg name="laptop_base_thickness" default="0.022"/><xacro:arg name="laptop_screen_height" default="0.24"/>
+  <xacro:arg name="laptop_screen_thickness" default="0.012"/><xacro:arg name="laptop_open_angle_deg" default="90.0"/>
+  <xacro:arg name="laptop_clearance" default="0.015"/>
+
+  <link name="base_link"/>
+
+  <!-- Ground-projection reference. Kept as a child of base_link so the
+       Ranger odometry publisher can later own odom -> base_link without a
+       competing TF parent. -->
+  <!-- <link name="base_footprint"/>
+  <joint name="base_to_base_footprint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_footprint"/>
+    <origin xyz="0 0 ${ground_z_nom}" rpy="0 0 0"/>
+  </joint> -->
+
+  <xacro:if value="$(arg use_static_geometry)">
+    <xacro:ranger_static_geometry parent="base_link" use_collision="$(arg use_static_collision)"/>
+  </xacro:if>
+
+  <link name="xarm_mount_link"/>
+  <joint name="base_to_xarm_mount" type="fixed">
+    <parent link="base_link"/><child link="xarm_mount_link"/>
+    <origin xyz="${xarm_mount_x_nom+float($(arg xarm_dx))} ${xarm_mount_y_nom+float($(arg xarm_dy))} ${xarm_mount_z_nom+float($(arg xarm_dz))}" rpy="0 0 0"/>
+  </joint>
+
+  <xacro:ranger_sensor_frames parent="base_link"
+    rplidar_x="${rplidar_x_nom+float($(arg rplidar_dx))}" rplidar_y="${rplidar_y_nom+float($(arg rplidar_dy))}" rplidar_z="${rplidar_z_nom+float($(arg rplidar_dz))}"
+    os0_x="${os0_x_nom+float($(arg os0_dx))}" os0_y="${os0_y_nom+float($(arg os0_dy))}" os0_z="${os0_z_nom+float($(arg os0_dz))}"
+    d435_x="${d435_x_nom+float($(arg d435_dx))}" d435_y="${d435_y_nom+float($(arg d435_dy))}" d435_z="${d435_z_nom+float($(arg d435_dz))}"
+    show_sensor_collision="true"/>
+
+  <xacro:if value="$(arg use_laptop_collision)">
+    <xacro:generic_laptop_collision parent="base_link" mount_x="${laptop_mount_x_nom}" mount_y="${laptop_mount_y_nom}" mount_z="${laptop_mount_z_nom}"
+      width="$(arg laptop_width)" depth="$(arg laptop_depth)" base_thickness="$(arg laptop_base_thickness)"
+      screen_height="$(arg laptop_screen_height)" screen_thickness="$(arg laptop_screen_thickness)"
+      open_angle_deg="$(arg laptop_open_angle_deg)" clearance="$(arg laptop_clearance)" show_visual="true"/>
+  </xacro:if>
+
+  <xacro:if value="$(arg use_xarm)">
+    <xacro:include filename="$(find xarm_description)/urdf/xarm_device_macro.xacro"/>
+    <xacro:xarm_device prefix="$(arg xarm_prefix)" hw_ns="xarm" dof="6" robot_type="xarm" limited="false"
+      add_gripper="$(arg add_gripper)" model1300="$(arg model1300)" robot_sn="$(arg robot_sn)"
+      attach_to="xarm_mount_link" attach_xyz="0 0 0" attach_rpy="0 0 $(arg xarm_mount_yaw)"
+      create_attach_link="false" load_gazebo_plugin="$(arg xarm_load_gazebo_plugin)" mesh_suffix="stl"
+      ros2_control_plugin="$(arg xarm_ros2_control_plugin)"
+      ros2_control_params="$(arg xarm_ros2_control_params)"
+      robot_ip="$(arg xarm_robot_ip)"
+      report_type="$(arg xarm_report_type)"
+      velocity_control="$(arg xarm_velocity_control)"
+      baud_checkset="$(arg xarm_baud_checkset)"
+      default_gripper_baud="$(arg xarm_default_gripper_baud)"/>
+  </xacro:if>
+</robot>
