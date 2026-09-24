@@ -14,6 +14,10 @@ robot and there is no second description to drift out of step.
 
 ---
 
+New to this robot? **`docs/SITE_SETUP.md`** is the hands-on onboarding guide:
+the site-specific values you must supply, host prerequisites, the ordered
+bring-up rungs, and what a healthy system actually measures.
+
 ## Quick start (simulation, no hardware)
 
 ```bash
