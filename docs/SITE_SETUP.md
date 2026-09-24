@@ -68,7 +68,51 @@ sudo apt-mark hold ros-jazzy-ouster-ros ros-jazzy-ouster-sensor-msgs
 Older debs, when they have aged out of the pool, live at
 `http://snapshots.ros.org/jazzy/<snapshot-date>/ubuntu/pool/main/r/`.
 
-## 3. Bring-up, in order
+## 3. Network isolation — set your own `ROS_DOMAIN_ID`
+
+**Do this before anything else if you share a network with other people.**
+
+ROS 2 nodes on the same network discover each other when they share a
+`ROS_DOMAIN_ID`. Unset means **0**, which is also what every other newcomer
+gets by default — so leaving it unset is the most likely way to collide. The
+failure is nasty because it is not an error: someone else's simulated
+`/joint_states` simply turns up alongside yours, and the robot model twitches,
+or MoveIt plans from a state that is not your robot's.
+
+Pick a number and put it in your shell profile:
+
+```bash
+export ROS_DOMAIN_ID=<pick 0-101>      # yours, not someone else's
+```
+
+Stick to 0–101. Higher values are legal but can collide with the ephemeral
+port range on Linux.
+
+**Running simulation?** Keep it off the network entirely, whatever domain you
+chose:
+
+```bash
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+```
+
+Discovery then never leaves your machine, so two people can run `sim.launch.py`
+side by side on the same subnet and neither sees the other — or the robot.
+This is the Jazzy replacement for the deprecated `ROS_LOCALHOST_ONLY`.
+
+**Driving the physical robot?** Everyone operating it must share **one agreed
+domain**, because that is how they see its topics. That value is not in this
+public file; it comes with the site values handed to you offline. Use the
+agreed domain only when you are actually on the robot, and your own domain the
+rest of the time.
+
+Check what you are on, and who else is out there:
+
+```bash
+echo "domain ${ROS_DOMAIN_ID:-0 (unset - you are on the shared default)}"
+ros2 node list          # anything here you do not recognise is someone else
+```
+
+## 4. Bring-up, in order
 
 Each rung is a real diagnostic step, not an alternative way to start. If a
 rung fails, the next one will fail more confusingly.
@@ -100,7 +144,7 @@ ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<XARM_IP> \
     enable_base:=false enable_rplidar:=false enable_ouster:=false
 ```
 
-## 4. Verification — what healthy looks like
+## 5. Verification — what healthy looks like
 
 Measured on a working system, so treat large deviations as real:
 
@@ -115,7 +159,7 @@ Measured on a working system, so treat large deviations as real:
 | Sensor mounting | `ros2 run tf2_ros tf2_echo base_footprint os_sensor` | resolves; z ≈ 1.47 m |
 | Kernel not dropping | `grep -A1 ^Udp: /proc/net/snmp` | `RcvbufErrors` **not increasing** between samples |
 
-## 5. Things that will catch you
+## 6. Things that will catch you
 
 **Exactly one node may own `odom -> base_footprint`.** The Ranger driver does
 by default; `publish_odom_tf:=false` hands it to the EKF. With two owners TF
@@ -139,7 +183,7 @@ to 15 characters, so `robot_state_publisher` is really `robot_state_pub` and
 will not match. Every Python node reports `comm=python3`. Kill by PID from
 `ps -eo pid,args | grep ranger_xarm_ws` instead.
 
-## 6. Safety
+## 7. Safety
 
 Physical motion is opt-in and layered, and a subsystem being *present* is not
 the same as it being allowed to move. Before rung 5, have the e-stop in hand
