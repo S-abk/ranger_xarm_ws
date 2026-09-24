@@ -1,7 +1,21 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:macro name="ranger_static_geometry" params="parent:='base_link' use_collision:=true">
+  <xacro:macro name="ranger_static_geometry" params="parent:='base_link' use_collision:=true wheels_modelled:=false">
     <link name="ranger_cad_link">
+      <!-- Chassis mass. Nothing in this description carried an <inertial> at
+           all, which means the whole platform was massless in physics: gz
+           falls back to a ~1 kg placeholder, so an 18 kg arm swinging on top
+           could shove the base around, and a massless wheel has no normal
+           force and therefore no traction. AgileX publish 63 kg for a loaded
+           Ranger Mini; 47 kg here leaves room for the 4x3 kg wheels and
+           4x1 kg steering knuckles in ranger_wheels.xacro. Inertia is the
+           solid-box equivalent of the ranger_envelope collision, taken about
+           the same centre. -->
+      <inertial>
+        <origin xyz="-0.001 0 -0.181436" rpy="0 0 0"/>
+        <mass value="47.0"/>
+        <inertia ixx="1.6086" ixy="0" ixz="0" iyy="3.1592" iyz="0" izz="3.5065"/>
+      </inertial>
       <visual name="ranger_cad_visual">
         <geometry>
           <mesh filename="package://ranger_xarm_description/meshes/visual/ranger_mini_v3_cad.stl" scale="0.001 0.001 0.001"/>
@@ -9,10 +23,28 @@
         <material name="ranger_cad_material"><color rgba="0.72 0.72 0.68 1"/></material>
       </visual>
       <xacro:if value="${use_collision}">
-        <collision name="ranger_envelope">
-          <origin xyz="-0.001000 0 -0.181436" rpy="0 0 0"/>
-          <geometry><box size="0.803706 0.500020 0.400891"/></geometry>
-        </collision>
+        <!-- ranger_envelope is the whole-vehicle bounding box, wheels
+             included, so its underside sits at base_link z=-0.3819: 5.5 cm
+             BELOW the wheel tread at -0.3270. With no wheel collisions that
+             is merely conservative, and the platform rests on the box.
+             Once ranger_wheels.xacro provides real tyre collisions it is
+             actively wrong; the box grounds out first and holds the wheels
+             in the air, where they spin freely and the robot cannot drive.
+             So when wheels are modelled the envelope is cut back to the
+             chassis proper, whose underside measures -0.2514 in the CAD
+             mesh (76 mm ground clearance, matching the published spec). -->
+        <xacro:if value="${wheels_modelled}">
+          <collision name="ranger_envelope">
+            <origin xyz="-0.001000 0 -0.116180" rpy="0 0 0"/>
+            <geometry><box size="0.803706 0.500020 0.270360"/></geometry>
+          </collision>
+        </xacro:if>
+        <xacro:unless value="${wheels_modelled}">
+          <collision name="ranger_envelope">
+            <origin xyz="-0.001000 0 -0.181436" rpy="0 0 0"/>
+            <geometry><box size="0.803706 0.500020 0.400891"/></geometry>
+          </collision>
+        </xacro:unless>
       </xacro:if>
     </link>
     <joint name="base_to_ranger_cad" type="fixed">
@@ -21,6 +53,17 @@
     </joint>
 
     <link name="custom_structure_link">
+      <!-- Gantry, arm pedestal, EcoFlow pack, laptop stand and control box.
+           Estimated, not weighed: the battery dominates at roughly half of
+           it. The centre of mass sits low and aft, where the pack and power
+           mount are, NOT at the gantry mid-height; putting it at the
+           geometric centre of the gantry would invent a tippy robot that
+           the real platform is not. -->
+      <inertial>
+        <origin xyz="-0.150 0 0.350" rpy="0 0 0"/>
+        <mass value="25.0"/>
+        <inertia ixx="3.134" ixy="0" ixz="0" iyy="3.817" iyz="0" izz="1.724"/>
+      </inertial>
       <visual name="custom_structure_visual">
         <geometry>
           <mesh filename="package://ranger_xarm_description/meshes/visual/custom_structure_cad.stl" scale="0.001 0.001 0.001"/>

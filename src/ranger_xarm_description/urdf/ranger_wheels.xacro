@@ -1,0 +1,197 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Ranger Mini V3 four-wheel independent steering (4WIS) drive.
+
+       Geometry is measured off ranger_mini_v3_cad.stl rather than taken from
+       a datasheet, by least-squares circle fit to the lower arc of each tyre
+       (the arc nothing else can occlude). Fit residual is under 2 mm:
+
+         wheel radius   0.1026 m   (205 mm dia, the platform's 8" wheel)
+         wheelbase      0.494 m    (front axle +0.2461, rear -0.2479)
+         track          0.3704 m   (+/-0.1852)
+         axle height    ground_z_nom + radius, so the tread sits exactly on
+                        the documented ground plane instead of near it
+
+       Front/rear and left/right differ by 1-2 mm in the mesh, which is
+       tessellation noise on a symmetric platform, so the values above are
+       symmetrised; asymmetric wheelbase would otherwise show up as a
+       phantom yaw bias in the drive kinematics.
+
+       Each corner is steer (revolute about Z, through the wheel centre) then
+       roll (continuous about Y). Zero scrub radius: the real platform has a
+       small caster offset, but modelling it buys nothing here and makes the
+       inverse kinematics implicit rather than closed-form.
+
+       The wheels are COLLISION ONLY on purpose. ranger_mini_v3_cad.stl
+       already draws four wheels moulded into the chassis at zero steer; a
+       second set of visuals would render eight. The trade is that the wheels
+       do not visibly turn; verify steering from joint states, not the GUI. -->
+
+  <xacro:macro name="ranger_wheels" params="parent:='base_link' ground_z:=-0.327028595">
+
+    <xacro:property name="wheel_radius" value="0.1026"/>
+    <xacro:property name="wheel_width" value="0.070"/>
+    <xacro:property name="half_wheelbase" value="0.2470"/>
+    <xacro:property name="half_track" value="0.1852"/>
+    <xacro:property name="axle_z" value="${ground_z + wheel_radius}"/>
+
+    <!-- 3 kg tyre+hub; knuckle is the steering casting above it. -->
+    <xacro:property name="wheel_mass" value="3.0"/>
+    <xacro:property name="steer_mass" value="1.0"/>
+
+    <xacro:macro name="ranger_corner" params="name x y">
+      <!-- Steering knuckle: revolute about Z through the wheel centre. The
+           +/-100 deg range is deliberately wider than the +/-90 deg the
+           kinematics ever commands, so a wheel asked for exactly 90 deg
+           does not sit on its limit and chatter. -->
+      <link name="${name}_steer_link">
+        <inertial>
+          <origin xyz="0 0 0.02"/>
+          <mass value="${steer_mass}"/>
+          <inertia ixx="0.0015" ixy="0" ixz="0" iyy="0.0015" iyz="0" izz="0.0020"/>
+        </inertial>
+      </link>
+      <joint name="${name}_steer_joint" type="revolute">
+        <parent link="${parent}"/>
+        <child link="${name}_steer_link"/>
+        <origin xyz="${x} ${y} ${axle_z}" rpy="0 0 0"/>
+        <axis xyz="0 0 1"/>
+        <!-- 200 Nm is not the actuator's rating, it is what it takes to
+             twist a loaded tyre in place here. Each wheel carries ~250 N,
+             and gz contacts the tyre cylinder against the floor as a stiff
+             line contact, so scrub torque is far higher than the textbook
+             mu*N*patch estimate. At 40 Nm the steering simply stalled
+             part-way and the platform under-rotated to 19% of a commanded
+             spin, with the kinematics output perfectly correct; the
+             giveaway that the fault was actuation, not maths. -->
+        <limit lower="${-100.0*pi/180.0}" upper="${100.0*pi/180.0}"
+               effort="200.0" velocity="8.0"/>
+        <dynamics damping="0.05" friction="0.0"/>
+      </joint>
+
+      <link name="${name}_wheel_link">
+        <inertial>
+          <origin xyz="0 0 0"/>
+          <mass value="${wheel_mass}"/>
+          <!-- Solid cylinder, spin axis Y: Iyy = mr^2/2, Ixx = Izz = m(3r^2+h^2)/12 -->
+          <inertia
+            ixx="${wheel_mass*(3.0*wheel_radius*wheel_radius + wheel_width*wheel_width)/12.0}"
+            ixy="0" ixz="0"
+            iyy="${wheel_mass*wheel_radius*wheel_radius/2.0}"
+            iyz="0"
+            izz="${wheel_mass*(3.0*wheel_radius*wheel_radius + wheel_width*wheel_width)/12.0}"/>
+        </inertial>
+        <!-- Sphere, not cylinder, and the reason matters. A cylinder lying on
+             a plane meets it along a LINE, and bullet-featherstone reduces
+             that to a degenerate contact manifold: the tyre then slips
+             instead of gripping, which showed up as a commanded spin
+             producing 8% of its yaw while the wheel joints turned at exactly
+             the right speed. A sphere of the same radius touches the floor
+             at a point, which is what a rolling contact actually is, and it
+             is kinematically identical for a wheel on flat ground. The cost
+             is that it cannot tip onto a tyre edge or climb a square lip,
+             neither of which an empty ground plane offers. -->
+        <collision name="${name}_tyre">
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <sphere radius="${wheel_radius}"/>
+          </geometry>
+          <surface>
+            <friction>
+              <ode><mu>1.5</mu><mu2>1.5</mu2></ode>
+            </friction>
+          </surface>
+        </collision>
+      </link>
+      <joint name="${name}_wheel_joint" type="continuous">
+        <parent link="${name}_steer_link"/>
+        <child link="${name}_wheel_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <axis xyz="0 1 0"/>
+        <!-- 8 Nm is 78 N of thrust per wheel, ample for a 100 kg platform on
+             the flat, and the low value is deliberate. gz drives this joint
+             with a velocity motor, which is a near-rigid constraint on spin
+             rate; four of them plus four held steer angles over-determine a
+             3-DOF chassis, so any small steering error has the wheels
+             fighting each other instead of moving the robot. At 60 Nm the
+             motors always won and a commanded spin produced under 10% of
+             its yaw regardless of friction. Letting them be back-driven
+             lets the contact resolve the inconsistency, which is what a
+             real torque-driven wheel does. -->
+        <limit effort="60.0" velocity="25.0"/>
+        <dynamics damping="0.02" friction="0.0"/>
+      </joint>
+
+      <!-- Rubber on a hard floor. mu2 is the lateral coefficient; leaving it
+           at the default lets a steered wheel slide sideways, which reads as
+           the robot crabbing when it was told to drive straight. -->
+      <gazebo reference="${name}_wheel_link">
+        <mu1>1.2</mu1>
+        <mu2>1.2</mu2>
+        <kp>1000000.0</kp>
+        <kd>100.0</kd>
+        <minDepth>0.001</minDepth>
+      </gazebo>
+    </xacro:macro>
+
+    <xacro:ranger_corner name="front_left"  x="${ half_wheelbase}" y="${ half_track}"/>
+    <xacro:ranger_corner name="front_right" x="${ half_wheelbase}" y="${-half_track}"/>
+    <xacro:ranger_corner name="rear_left"   x="${-half_wheelbase}" y="${ half_track}"/>
+    <xacro:ranger_corner name="rear_right"  x="${-half_wheelbase}" y="${-half_track}"/>
+
+  </xacro:macro>
+
+  <!-- ros2_control interfaces for the eight drive joints.
+
+       Each joint claims exactly ONE command interface, and that is load
+       bearing: gz_ros2_control's write() picks one control law per joint by
+       fixed priority (velocity, then position, then effort), so a joint that
+       claims both silently runs the velocity law. Steering therefore claims
+       position only and drive claims velocity only. -->
+  <xacro:macro name="ranger_wheels_ros2_control" params="name:='ranger_base' plugin">
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <plugin>${plugin}</plugin>
+      </hardware>
+      <xacro:macro name="corner_ifaces" params="corner">
+        <joint name="${corner}_steer_joint">
+          <command_interface name="position">
+            <param name="min">${-100.0*pi/180.0}</param>
+            <param name="max">${100.0*pi/180.0}</param>
+          </command_interface>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+        </joint>
+        <!-- Effort, not velocity, and this is the whole reason the base can
+             turn. bullet-featherstone implements a joint velocity command as
+             a Bullet motor CONSTRAINT rather than a torque-limited actuator,
+             and that constraint is rigid and does not disengage
+             (gazebosim/gz-sim#2729, gz-physics#713). Four wheels each pinned
+             to an exact spin rate, plus four steer angles, over-determine a
+             3-DOF chassis: the wheels can never slip, so the solver cannot
+             resolve the inconsistency and the body simply refuses to yaw.
+             That is why a commanded spin produced under 10% of its rotation
+             while every joint reported its target perfectly, and why raising
+             friction from 1.5 to 50 changed nothing at all; a wheel that
+             cannot slip does not care what the friction is.
+
+             Driving torque instead leaves the contact free to slip, which is
+             what makes a real wheel work. ranger_4wis_controller.py closes
+             the speed loop. -->
+        <joint name="${corner}_wheel_joint">
+          <command_interface name="effort">
+            <param name="min">-60.0</param>
+            <param name="max">60.0</param>
+          </command_interface>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+        </joint>
+      </xacro:macro>
+      <xacro:corner_ifaces corner="front_left"/>
+      <xacro:corner_ifaces corner="front_right"/>
+      <xacro:corner_ifaces corner="rear_left"/>
+      <xacro:corner_ifaces corner="rear_right"/>
+    </ros2_control>
+  </xacro:macro>
+
+</robot>

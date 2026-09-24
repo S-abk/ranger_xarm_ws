@@ -16,6 +16,7 @@ the two can be debugged separately.
 """
 import os
 
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
@@ -36,6 +37,7 @@ def launch_setup(context, *args, **kwargs):
     world = LaunchConfiguration('world').perform(context)
     headless = LaunchConfiguration('headless').perform(context).lower() in ('true', '1', 'yes')
     add_gripper = LaunchConfiguration('add_gripper').perform(context)
+    drive_base = LaunchConfiguration('drive_base').perform(context).lower() in ('true', '1', 'yes')
     prefix = 'xarm_'
 
     # The upstream controller config is written for a bare arm. This rewrites
@@ -53,6 +55,55 @@ def launch_setup(context, *args, **kwargs):
         use_sim_time=True,
     )
 
+    # gz_ros2_control's write() picks ONE control law per joint, in fixed
+    # priority: velocity beats position beats effort. The upstream xarm6
+    # controller config claims both "position" and "velocity" command
+    # interfaces for xarm6_traj_controller, so velocity always wins --
+    # and once a trajectory finishes, joint_trajectory_controller's held
+    # velocity output is a flat 0, with no feedback term at all. That
+    # gives gravity a completely open loop: nothing is watching position
+    # error, so xarm_joint2/3 sag a little further every cycle with
+    # nothing to stop it, until the arm folds back into the sensor
+    # gantry pedestal mounted right behind it.
+    #
+    # Dropping "velocity" here makes gz_ros2_control fall through to its
+    # position branch, which closes a real proportional loop in velocity
+    # space (target_vel = -gain * position_error * update_rate) -- gravity
+    # sag now generates a restoring command instead of being silently
+    # ignored. The stock gain is left alone on purpose: update_rate (150)
+    # is baked into that product, so the effective gain is already ~15,
+    # and raising the tunable on top of it just makes the joints hunt
+    # around the setpoint instead of settling.
+    with open(controllers, 'r') as f:
+        controllers_yaml = yaml.safe_load(f)
+    arm_controller = controllers_yaml['{}xarm6_traj_controller'.format(prefix)]
+    arm_controller['ros__parameters']['command_interfaces'] = ['position']
+
+    # gz_ros2_control hands ONE parameters file to the controller_manager it
+    # embeds, so the base controllers have to be merged into the same file
+    # the arm uses rather than passed separately.
+    if drive_base:
+        with open(os.path.join(
+                get_package_share_directory('ranger_xarm_gazebo'),
+                'config', 'base_controllers.yaml'), 'r') as f:
+            base_yaml = yaml.safe_load(f)
+        for name, cfg in base_yaml['controller_manager']['ros__parameters'].items():
+            controllers_yaml['controller_manager']['ros__parameters'][name] = cfg
+        for name in ('ranger_steer_controller', 'ranger_wheel_controller'):
+            controllers_yaml[name] = base_yaml[name]
+
+    if drive_base:
+        # hold_joints makes gz_ros2_control write a zero-velocity command to
+        # every actuated joint that no controller is currently claiming. On
+        # bullet-featherstone a velocity command is a rigid motor constraint
+        # (gazebosim/gz-sim#2729), so that default quietly pins joints the
+        # base needs free while it manoeuvres.
+        controllers_yaml.setdefault('gz_ros_control', {}) \
+            .setdefault('ros__parameters', {})['hold_joints'] = False
+
+    with open(controllers, 'w') as f:
+        yaml.dump(controllers_yaml, f, default_flow_style=False)
+
     xacro_file = PathJoinSubstitution([
         FindPackageShare('ranger_xarm_description'), 'urdf',
         'ranger_xarm.urdf.xacro'])
@@ -63,13 +114,40 @@ def launch_setup(context, *args, **kwargs):
             ' xarm_load_gazebo_plugin:=true',
             ' xarm_ros2_control_params:=', controllers,
             ' add_gripper:=', add_gripper,
+            # Wheels and the world weld are mutually exclusive: the weld is
+            # what keeps a wheel-less base from being walked around by the
+            # arm, and it would pin a wheeled one to the spot.
+            ' use_wheels:=', 'true' if drive_base else 'false',
+            ' fix_base_to_world:=', 'false' if drive_base else 'true',
         ]), value_type=str)
 
     gz = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([
             FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])),
         launch_arguments={
-            'gz_args': ('-r -s -v 2 ' if headless else '-r -v 2 ') + world,
+            # dartsim, gz-sim's default, for everything.
+            #
+            # bullet-featherstone is the obvious alternative and is the wrong
+            # choice here: it implements a joint velocity command as a rigid
+            # Bullet motor constraint that never disengages
+            # (gazebosim/gz-sim#2729, gz-physics#713). Four wheels and four
+            # steer joints so pinned over-determine the chassis, and it
+            # simply refuses to yaw: a commanded 229 deg spin produced 0.5
+            # deg. That is also why friction was irrelevant while debugging
+            # it (mu 1.5 and mu 50 behaved identically; a wheel that cannot
+            # slip does not care). The same model on dartsim spins in place
+            # with zero drift.
+            #
+            # The reason dartsim used to be unusable here was the gripper:
+            # it has no mimic constraint support (gz-physics#432, open), so
+            # the finger linkage came apart. That is now handled a layer up,
+            # by ros2_control's own mimic implementation, which
+            # gz_ros2_control applies every cycle regardless of engine. See
+            # xarm_gripper.ros2_control.xacro. The gz warning about mimic
+            # constraints on startup is expected and harmless.
+            'gz_args': ('-r -s -v 2 ' if headless else '-r -v 2 ')
+                       + '--physics-engine gz-physics-dartsim-plugin '
+                       + world,
         }.items(),
     )
 
@@ -111,11 +189,24 @@ def launch_setup(context, *args, **kwargs):
     # saying the component registered no statistics -- not an error.
     gripper = spawner('{}xarm_gripper_traj_controller'.format(prefix))
 
+    steer = spawner('ranger_steer_controller')
+    wheels = spawner('ranger_wheel_controller')
+    kinematics = Node(
+        package='ranger_xarm_gazebo', executable='ranger_4wis_controller.py',
+        output='screen', parameters=[{'use_sim_time': True}],
+    )
+
     rviz = Node(
         package='rviz2', executable='rviz2', output='screen',
         condition=IfCondition(LaunchConfiguration('start_rviz')),
         parameters=[{'use_sim_time': True}],
     )
+
+    after_jsb = [arm]
+    if add_gripper.lower() in ('true', '1', 'yes'):
+        after_jsb.append(gripper)
+    if drive_base:
+        after_jsb += [steer, wheels, kinematics]
 
     return [
         gz, rsp, clock_bridge, spawn,
@@ -124,10 +215,8 @@ def launch_setup(context, *args, **kwargs):
         # inside the spawned model, so spawning them earlier is a race.
         RegisterEventHandler(OnProcessExit(target_action=spawn,
                                            on_exit=[jsb])),
-        RegisterEventHandler(OnProcessExit(
-            target_action=jsb,
-            on_exit=[arm] if add_gripper.lower() not in ('true', '1', 'yes')
-            else [arm, gripper])),
+        RegisterEventHandler(OnProcessExit(target_action=jsb,
+                                           on_exit=after_jsb)),
         rviz,
     ]
 
@@ -144,5 +233,11 @@ def generate_launch_description():
         DeclareLaunchArgument('add_gripper', default_value='true',
                               description='Include the xArm gripper.'),
         DeclareLaunchArgument('start_rviz', default_value='false'),
+        DeclareLaunchArgument(
+            'drive_base', default_value='false',
+            description='Add the 4WIS wheels and drive the base from '
+                        '/cmd_vel. Off by default: without it the base is '
+                        'welded to the world, which is what the arm-only '
+                        'workflows expect.'),
         OpaqueFunction(function=launch_setup),
     ])

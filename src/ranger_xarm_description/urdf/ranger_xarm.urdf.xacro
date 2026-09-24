@@ -4,6 +4,7 @@
   <xacro:include filename="$(find ranger_xarm_description)/urdf/static_geometry.xacro"/>
   <xacro:include filename="$(find ranger_xarm_description)/urdf/sensor_frames.xacro"/>
   <xacro:include filename="$(find ranger_xarm_description)/urdf/laptop_collision.xacro"/>
+  <xacro:include filename="$(find ranger_xarm_description)/urdf/ranger_wheels.xacro"/>
 
   <xacro:arg name="use_xarm" default="true"/>
   <xacro:arg name="use_static_geometry" default="true"/>
@@ -35,6 +36,25 @@
   <xacro:arg name="os0_dx" default="0.0"/><xacro:arg name="os0_dy" default="0.0"/><xacro:arg name="os0_dz" default="0.0"/>
   <xacro:arg name="d435_dx" default="0.0"/><xacro:arg name="d435_dy" default="0.0"/><xacro:arg name="d435_dz" default="0.0"/>
 
+  <!-- Base drive. Following the same rule the arm already uses; simulation
+       changes xacro arguments, not the model; both default to the
+       hardware/planning behaviour, and only the gz launch turns them over:
+
+         use_wheels         adds the 4WIS steer+roll joints and their
+                            ros2_control interfaces. Off by default because
+                            no hardware driver here publishes those joint
+                            states, and an unpublished joint is a frame that
+                            silently sits at zero in RViz and MoveIt.
+         fix_base_to_world  welds base_link down. On by default, because
+                            without wheels base_link is a free-floating root
+                            link held up by nothing but ground contact, and
+                            the arm's reaction forces walk it across the
+                            floor. Turn it OFF whenever use_wheels is on;
+                            they are opposites, not companions. -->
+  <xacro:arg name="use_wheels" default="false"/>
+  <xacro:arg name="fix_base_to_world" default="true"/>
+  <xacro:arg name="wheels_ros2_control_plugin" default="gz_ros2_control/GazeboSimSystem"/>
+
   <xacro:arg name="use_laptop_collision" default="true"/>
   <xacro:arg name="laptop_width" default="0.36"/><xacro:arg name="laptop_depth" default="0.25"/>
   <xacro:arg name="laptop_base_thickness" default="0.022"/><xacro:arg name="laptop_screen_height" default="0.24"/>
@@ -42,6 +62,27 @@
   <xacro:arg name="laptop_clearance" default="0.015"/>
 
   <link name="base_link"/>
+
+  <!-- base_link is the URDF root with no joint above it, so gz-sim spawns it
+       as a free-floating 6-DOF body held up by nothing but ground contact.
+       With no wheels to carry it, the arm's reaction forces couple into that
+       floating body every step and walk it across the floor. Welding it to a
+       "world" link; the convention gz-sim's URDF to SDF conversion
+       recognises for a stationary base; makes it a fixed pedestal, which
+       is what MoveIt planning and display.launch.py already assume. -->
+  <xacro:if value="$(arg fix_base_to_world)">
+    <link name="world"/>
+    <joint name="world_to_base_link" type="fixed">
+      <parent link="world"/>
+      <child link="base_link"/>
+    </joint>
+  </xacro:if>
+
+  <xacro:if value="$(arg use_wheels)">
+    <xacro:ranger_wheels parent="base_link" ground_z="${ground_z_nom}"/>
+    <xacro:ranger_wheels_ros2_control name="ranger_base"
+      plugin="$(arg wheels_ros2_control_plugin)"/>
+  </xacro:if>
 
   <!-- Ground-projection reference. Kept as a child of base_link so the
        Ranger odometry publisher can later own odom -> base_link without a
@@ -54,7 +95,8 @@
   </joint> -->
 
   <xacro:if value="$(arg use_static_geometry)">
-    <xacro:ranger_static_geometry parent="base_link" use_collision="$(arg use_static_collision)"/>
+    <xacro:ranger_static_geometry parent="base_link" use_collision="$(arg use_static_collision)"
+      wheels_modelled="$(arg use_wheels)"/>
   </xacro:if>
 
   <link name="xarm_mount_link"/>
