@@ -14,7 +14,8 @@ Anything that moves the arm autonomously belongs in a downstream package that
 includes this one, not in here -- see the workspace README.
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import (DeclareLaunchArgument, GroupAction,
+                            IncludeLaunchDescription)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import (AnyLaunchDescriptionSource,
                                                PythonLaunchDescriptionSource)
@@ -104,16 +105,32 @@ def generate_launch_description():
         }.items(),
     )
 
-    d435 = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(PathJoinSubstitution([
-            FindPackageShare('ranger_xarm_sensors'),
-            'launch', 'd435.launch.py'])),
-        condition=IfCondition(lc('enable_d435')),
-        launch_arguments={
+    # Scoped and NOT forwarding, which matters more than it looks. An include
+    # inherits the parent's launch configurations, and the RealSense launch
+    # turns every configuration it can see into a node parameter -- so every
+    # argument declared here (can_device, enable_base, max_linear_x, ...)
+    # arrived at the camera as an unsupported parameter and produced ~20 lines
+    # of warning each start. That noise is not cosmetic: it buried a driver
+    # crash during bring-up and cost real time to see past.
+    d435 = GroupAction(
+        actions=[IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(PathJoinSubstitution([
+                FindPackageShare('ranger_xarm_sensors'),
+                'launch', 'd435.launch.py'])),
+        )],
+        scoped=True, forwarding=False,
+        # Passed HERE, not as launch_arguments. forwarding=False inserts a
+        # ResetLaunchConfigurations, which resolves this dict against the
+        # parent context and only then clears -- so these three survive and
+        # everything else is dropped. As launch_arguments they would be
+        # evaluated after the clear, and fail with "launch configuration
+        # 'color_profile' does not exist".
+        launch_configurations={
             'color_profile': lc('color_profile'),
             'depth_profile': lc('depth_profile'),
             'initial_reset': lc('d435_initial_reset'),
-        }.items(),
+        },
+        condition=IfCondition(lc('enable_d435')),
     )
 
     # Ouster's own launch, so the driver keeps ownership of
