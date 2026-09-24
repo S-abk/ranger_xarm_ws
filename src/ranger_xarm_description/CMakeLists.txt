@@ -3,7 +3,7 @@ project(ranger_xarm_description)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY urdf config launch rviz meshes
+install(DIRECTORY urdf config launch meshes
   DESTINATION share/${PROJECT_NAME}
 )
 
