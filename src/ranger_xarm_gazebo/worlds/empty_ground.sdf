@@ -30,6 +30,27 @@
       <link name="link">
         <collision name="collision">
           <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+          <!-- Floor friction lives here rather than on the wheels, because
+               URDF has nowhere to put it: neither <gazebo reference> mu1/mu2
+               nor a <surface> block inside <collision> survives the URDF to
+               SDF conversion (check with gz sdf -p; the converted wheel
+               collision comes out with no <surface> at all). Setting it on
+               the plane is native SDF and always applies, and gz combines
+               the two surfaces anyway.
+
+               torsional 0 is the load-bearing line. Torsional friction
+               resists a wheel twisting about the contact normal, and with
+               four loaded wheels it summed into a yaw resistance the drive
+               could not overcome: a commanded spin produced under 10% of
+               its yaw while the wheel joints turned at exactly the right
+               speed. Real tyres do have some, but gz's patch-radius model
+               grossly overstates it for a 100 kg platform. -->
+          <surface>
+            <friction>
+              <ode><mu>1.5</mu><mu2>1.5</mu2></ode>
+              <torsional><coefficient>0.0</coefficient></torsional>
+            </friction>
+          </surface>
         </collision>
         <visual name="visual">
           <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
