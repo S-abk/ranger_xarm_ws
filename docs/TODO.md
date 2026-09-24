@@ -2,7 +2,44 @@
 
 Outstanding items found while bringing this workspace up in simulation.
 Each one names the repo it applies to, because some belong to
-`S-abk/Ranger_xarm` (private) rather than here.
+`S-abk/Ranger_xarm` (private) or to upstream `xarm_ros2` rather than here.
+
+---
+
+## Gripper mimic joints: awaiting upstream (xarm_ros2)
+
+**Repo:** `xArm-Developer/xarm_ros2` · **PR:** [#180](https://github.com/xArm-Developer/xarm_ros2/pull/180) (open, targets `jazzy`)
+**Blocks:** `sim.launch.py drive_base:=true` on a fresh clone.
+
+The simulation runs on dartsim, because bullet-featherstone cannot rotate
+the 4WIS base. dartsim has no mimic constraint support, so the gripper's
+finger linkage falls apart unless the five follower joints are declared to
+ros2_control with `mimic="true"` in
+`xarm_description/urdf/gripper/xarm_gripper.ros2_control.xacro`.
+
+That file is pulled by `vcs import` into `src/xarm_ros2/`, which this repo
+gitignores, so the change **cannot be committed here**. It is applied in the
+local working copy and is what the committed simulation was verified
+against. A fresh clone plus `vcs import` will not have it, and the gripper
+will detach in `drive_base` mode until one of these happens:
+
+1. **PR #180 merges** — then bump the pin in `ranger_xarm.repos` from
+   `3dc2b5e` to the merged commit and this entry goes away. Preferred.
+2. **Point the pin at the fork** in the meantime:
+
+   ```yaml
+   xarm_ros2:
+     type: git
+     url: https://github.com/S-abk/xarm_ros2.git
+     version: fix/gripper-mimic-joints-ros2-control
+   ```
+
+   Makes a fresh clone work today, at the cost of depending on a personal
+   fork and tracking a branch rather than a commit. Revert to upstream once
+   #180 lands.
+
+Real hardware is unaffected either way: that ros2_control block is only
+emitted when the plugin is not `uf_robot_hardware/UFRobotSystemHardware`.
 
 ---
 
