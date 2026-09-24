@@ -8,3 +8,9 @@ src/xarm_ros2/
 
 __pycache__/
 *.pyc
+
+# The Ouster driver dumps <sensor-ip>-metadata.json into whatever directory
+# the launch was started from, so it lands at the workspace root by accident.
+# It carries the sensor serial, part number and firmware revision, which do
+# not belong in a public repo. Ranger_xarm ignores the same pattern.
+*-metadata.json
