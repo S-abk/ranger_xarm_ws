@@ -9,13 +9,29 @@ Each one names the repo it applies to, because some belong to
 ## Gripper mimic joints: awaiting upstream (xarm_ros2)
 
 **Repo:** `xArm-Developer/xarm_ros2` · **PR:** [#180](https://github.com/xArm-Developer/xarm_ros2/pull/180) (open, targets `jazzy`)
-**Blocks:** `sim.launch.py drive_base:=true` on a fresh clone.
+**Blocks:** every `sim.launch.py` invocation on a fresh clone, not just
+`drive_base:=true` — the whole sim runs on dartsim now, so the gripper is
+affected in the default arm-only mode too.
 
 The simulation runs on dartsim, because bullet-featherstone cannot rotate
 the 4WIS base. dartsim has no mimic constraint support, so the gripper's
 finger linkage falls apart unless the five follower joints are declared to
 ros2_control with `mimic="true"` in
 `xarm_description/urdf/gripper/xarm_gripper.ros2_control.xacro`.
+
+**Do not verify this from TF.** `robot_state_publisher` derives mimic joints
+kinematically from the URDF, so `/tf` reports a correct, symmetric gripper
+whether or not physics is actually enforcing the linkage. Measure the link
+poses gz publishes instead:
+
+```bash
+gz topic -e -t /world/empty_ground/dynamic_pose/info -n 1 | grep -A6 xarm_left_finger
+```
+
+Closed on the patched build the fingers sit at y = -0.0269 / +0.0269,
+symmetric about the centreline, 0.0538 m apart. Unpatched they sit at
+-0.0269 / +0.0444, 0.0713 m apart and visibly skewed, while TF still
+insists on 0.0540.
 
 That file is pulled by `vcs import` into `src/xarm_ros2/`, which this repo
 gitignores, so the change **cannot be committed here**. It is applied in the

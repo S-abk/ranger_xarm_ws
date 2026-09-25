@@ -26,7 +26,7 @@ source /opt/ros/jazzy/setup.bash
 
 git clone <this repo> ~/ranger_xarm_ws
 cd ~/ranger_xarm_ws
-vcs import src < ranger_xarm.repos          # pulls xarm_ros2 at a pinned commit
+vcs import --recursive src < ranger_xarm.repos   # xarm_ros2 at a pinned commit
 rosdep install --from-paths src --ignore-src -r -y
 
 colcon build --packages-up-to ranger_xarm_gazebo
@@ -48,6 +48,27 @@ Useful arguments:
 | `headless` | `false` | no gz GUI, for CI or a headless box |
 | `add_gripper` | `true` | include the xArm gripper |
 | `start_rviz` | `false` | |
+| `drive_base` | `false` | add the 4WIS wheels and drive the base from `/cmd_vel`. Off by default: without it the base is welded to the world, which is what the arm-only workflows expect |
+
+Driving the base:
+
+```bash
+ros2 launch ranger_xarm_gazebo sim.launch.py drive_base:=true
+ros2 topic pub -r 20 /cmd_vel geometry_msgs/msg/Twist \
+    "{linear: {x: 0.3, y: 0.0, z: 0.0}, angular: {z: 0.0}}"
+```
+
+One `/cmd_vel` twist covers every mode the platform has: `linear.x` drives,
+`linear.y` crabs, `angular.z` spins in place, and any mix arcs. There is no
+mode switch, because four-wheel independent steering does not need one.
+
+**The gripper needs a patch that is not in this repo.** It lives in a file
+`vcs import` pulls into `src/xarm_ros2/`, which is gitignored here, so a fresh
+clone does not have it and the finger linkage comes apart in simulation
+(the TF tree still looks correct — `robot_state_publisher` derives the mimic
+joints kinematically — so check the fingers in gz, not in RViz). See
+`docs/TODO.md`; upstream as
+[xarm_ros2#180](https://github.com/xArm-Developer/xarm_ros2/pull/180).
 
 Look at the model without a simulator at all:
 
