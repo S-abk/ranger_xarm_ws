@@ -92,15 +92,16 @@ def launch_setup(context, *args, **kwargs):
         for name in ('ranger_steer_controller', 'ranger_wheel_controller'):
             controllers_yaml[name] = base_yaml[name]
 
-    if drive_base:
-        # hold_joints makes gz_ros2_control write a zero-velocity command to
-        # every actuated joint that no controller is currently claiming. On
-        # bullet-featherstone a velocity command is a rigid motor constraint
-        # (gazebosim/gz-sim#2729), so that default quietly pins joints the
-        # base needs free while it manoeuvres.
-        controllers_yaml.setdefault('gz_ros_control', {}) \
-            .setdefault('ros__parameters', {})['hold_joints'] = False
-
+    # gz_ros2_control's hold_joints default (true) is deliberately left
+    # alone. It writes a zero-velocity command to any actuated joint no
+    # controller has claimed yet, which is the only thing holding the arm up
+    # during the ~9 s between the model appearing in gz and the trajectory
+    # controllers activating. Setting it false lets gravity take the arm over
+    # in that window, and joint_trajectory_controller then holds whatever
+    # pose it finds on activation: the arm comes up already collapsed, with
+    # joint2 pinned against its 2.0944 limit. It was briefly set false while
+    # chasing the base yaw problem on bullet-featherstone and never helped;
+    # dartsim fixed that.
     with open(controllers, 'w') as f:
         yaml.dump(controllers_yaml, f, default_flow_style=False)
 
