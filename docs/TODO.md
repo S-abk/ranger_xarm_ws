@@ -6,59 +6,37 @@ Each one names the repo it applies to, because some belong to
 
 ---
 
-## Gripper mimic joints: awaiting upstream (xarm_ros2)
+## Revert the xarm_ros2 pin once #180 merges
 
-**Repo:** `xArm-Developer/xarm_ros2` · **PR:** [#180](https://github.com/xArm-Developer/xarm_ros2/pull/180) (open, targets `jazzy`)
-**Blocks:** every `sim.launch.py` invocation on a fresh clone, not just
-`drive_base:=true` — the whole sim runs on dartsim now, so the gripper is
-affected in the default arm-only mode too.
+**Repo:** this one · **File:** `ranger_xarm.repos`
+**Upstream PR:** [xArm-Developer/xarm_ros2#180](https://github.com/xArm-Developer/xarm_ros2/pull/180)
 
-The simulation runs on dartsim, because bullet-featherstone cannot rotate
-the 4WIS base. dartsim has no mimic constraint support, so the gripper's
-finger linkage falls apart unless the five follower joints are declared to
-ros2_control with `mimic="true"` in
-`xarm_description/urdf/gripper/xarm_gripper.ros2_control.xacro`.
+`ranger_xarm.repos` points at `S-abk/xarm_ros2` @ `8d01a1b`, which is the
+upstream jazzy commit `3dc2b5e` plus one commit declaring the gripper's five
+follower joints to ros2_control with `mimic="true"`.
 
-**Do not verify this from TF.** `robot_state_publisher` derives mimic joints
-kinematically from the URDF, so `/tf` reports a correct, symmetric gripper
-whether or not physics is actually enforcing the linkage. Measure the link
-poses gz publishes instead:
+That is needed because the sim runs on dartsim, which has no mimic constraint
+support (gazebosim/gz-physics#432), so without it the gripper linkage comes
+apart. The fork exists only so a clean clone works today instead of whenever
+the PR lands.
+
+When #180 merges: set the url back to `xArm-Developer/xarm_ros2` and pin the
+merged commit. Nothing else changes.
+
+**Do not verify the gripper from TF.** `robot_state_publisher` derives mimic
+joints kinematically from the URDF, so `/tf` reports a correct, symmetric
+gripper whether or not physics is enforcing the linkage. Measure what gz
+publishes instead:
 
 ```bash
 gz topic -e -t /world/empty_ground/dynamic_pose/info -n 1 | grep -A6 xarm_left_finger
 ```
 
-Closed on the patched build the fingers sit at y = -0.0269 / +0.0269,
-symmetric about the centreline, 0.0538 m apart. Unpatched they sit at
--0.0269 / +0.0444, 0.0713 m apart and visibly skewed, while TF still
-insists on 0.0540.
-
-That file is pulled by `vcs import` into `src/xarm_ros2/`, which this repo
-gitignores, so the change **cannot be committed here**. It is applied in the
-local working copy and is what the committed simulation was verified
-against. A fresh clone plus `vcs import` will not have it, and the gripper
-will detach in `drive_base` mode until one of these happens:
-
-1. **PR #180 merges** — then bump the pin in `ranger_xarm.repos` from
-   `3dc2b5e` to the merged commit and this entry goes away. Preferred.
-2. **Point the pin at the fork** in the meantime:
-
-   ```yaml
-   xarm_ros2:
-     type: git
-     url: https://github.com/S-abk/xarm_ros2.git
-     version: fix/gripper-mimic-joints-ros2-control
-   ```
-
-   Makes a fresh clone work today, at the cost of depending on a personal
-   fork and tracking a branch rather than a commit. Revert to upstream once
-   #180 lands.
-
-Real hardware is unaffected either way: that ros2_control block is only
-emitted when the plugin is not `uf_robot_hardware/UFRobotSystemHardware`.
+Closed and working, the fingers sit at y = -0.0269 / +0.0269, symmetric about
+the centreline, 0.0538 m apart. Broken, they sit at -0.0269 / +0.0444 and
+0.0713 m apart while TF still insists on 0.0540.
 
 ---
-
 ## Fix the `rviz` build break in `Ranger_xarm` (private)
 
 **Repo:** `S-abk/Ranger_xarm` · **File:** `src/ranger_xarm_description/CMakeLists.txt`
@@ -126,31 +104,29 @@ source tree will mask the failure:
 git status --ignored src/ranger_xarm_description
 ```
 
+
 ---
 
-## Purge the leaked Ouster metadata from `ranger_xarm_ws` history (public)
+## Optional: purge the Ouster metadata from published history
 
-**Repo:** this one · **File:** `192.168.1-metadata.json` (workspace root)
+**Repo:** this one · **File:** `192.168.1-metadata.json` (removed from the tree)
 
-The Ouster driver writes `<sensor-ip>-metadata.json` into whatever directory the
-launch was started from, so it landed at the workspace root and was committed in
-`b1489de`. It contains the lidar's `prod_sn`, `prod_pn`, `image_rev` and
+The Ouster driver writes `<sensor-ip>-metadata.json` into whatever directory
+the launch was started from, so it landed at the workspace root and was
+committed. It carries the lidar's `prod_sn`, `prod_pn`, `image_rev` and
 `build_date`, and the filename encodes the sensor subnet.
 
-Working tree and future commits are handled: the file is deleted and
-`*-metadata.json` is now in `.gitignore`, matching the pattern `Ranger_xarm`
-already uses.
+The working tree and all future commits are handled: the file is deleted and
+`*-metadata.json` is in `.gitignore`.
 
-**Still outstanding:** deleting the file does *not* remove it from published
-history — the blob is still reachable in `b1489de` on GitHub. Actually purging it
-needs a history rewrite and force push:
+**Not done:** the blob is still reachable in the commit that introduced it, so
+it remains visible on GitHub. Removing it means rewriting published history:
 
 ```bash
 git filter-repo --path 192.168.1-metadata.json --invert-paths
 git push --force-with-lease origin main
 ```
 
-That rewrites shared history and breaks every existing clone, so it is a
-deliberate decision, not a cleanup. Weigh it against what is actually exposed: an
-RFC1918 subnet and a lidar serial. If the repo has few or no other clones, doing
-it is cheap; if not, it may not be worth the disruption.
+That breaks every existing clone, so it is a deliberate call rather than a
+cleanup. Weigh it against what is actually exposed: an RFC1918 subnet and a
+lidar serial. Deliberately deferred in favour of keeping history linear.
