@@ -41,7 +41,7 @@ import math
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
-from sensor_msgs.msg import JointState
+from control_msgs.msg import DynamicJointState
 from std_msgs.msg import Float64MultiArray
 
 CORNERS = ('front_left', 'front_right', 'rear_left', 'rear_right')
@@ -92,9 +92,22 @@ class Ranger4WIS(Node):
         self.twist = Twist()
         self.last_cmd_time = self.get_clock().now()
         self.create_subscription(Twist, '/cmd_vel', self._on_cmd, 10)
-        self.create_subscription(JointState, '/joint_states', self._on_joints, 10)
+        # Wheel speed feedback comes from /dynamic_joint_states, NOT
+        # /joint_states. joint_state_broadcaster only puts the arm and
+        # drive_joint on /joint_states here; the eight base joints appear
+        # solely on the dynamic topic. Reading the wrong one fails silently:
+        # every lookup misses, measured speed stays 0, the PI loop believes
+        # the wheels are stalled and runs open loop. The visible symptom is
+        # that releasing /cmd_vel leaves the base coasting for tens of
+        # metres, because zeroing the command also zeroes an error that was
+        # never real, so nothing ever brakes.
+        self.create_subscription(
+            DynamicJointState, '/dynamic_joint_states', self._on_joints, 10)
+        self.got_feedback = False
         self.dt = 0.01
         self.create_timer(self.dt, self._tick)
+        # Say so rather than quietly driving open loop.
+        self.create_timer(5.0, self._check_feedback)
 
         self.get_logger().info(
             f'4WIS ready: r={self.r} half_wheelbase={lx} half_track={ly}')
@@ -105,10 +118,19 @@ class Ranger4WIS(Node):
 
     def _on_joints(self, msg):
         for c in CORNERS:
-            try:
-                self.wheel_vel[c] = msg.velocity[msg.name.index(f'{c}_wheel_joint')]
-            except (ValueError, IndexError):
-                pass
+            name = f'{c}_wheel_joint'
+            if name not in msg.joint_names:
+                continue
+            iv = msg.interface_values[msg.joint_names.index(name)]
+            if 'velocity' in iv.interface_names:
+                self.wheel_vel[c] = iv.values[iv.interface_names.index('velocity')]
+                self.got_feedback = True
+
+    def _check_feedback(self):
+        if not self.got_feedback:
+            self.get_logger().warn(
+                'no wheel velocity on /dynamic_joint_states; the speed loop '
+                'is running open loop and the base will not brake')
 
     def _tick(self):
         age = (self.get_clock().now() - self.last_cmd_time).nanoseconds * 1e-9
