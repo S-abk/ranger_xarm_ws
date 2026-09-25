@@ -1,11 +1,25 @@
 # Upstream sources this workspace builds against.
-#   vcs import src < ranger_xarm.repos
+#   vcs import --recursive src < ranger_xarm.repos
+# --recursive matters: xarm_sdk carries a git submodule, and without it the
+# first build fails on "xarm_sdk contains sub-modules".
+#
 # Pinned to the commit this workspace was verified on. Bump deliberately:
 # xarm_ros2 supplies xarm_description, xarm_msgs, xarm_sdk, xarm_api and
 # xarm_controller, and the arm mount height and joint limits here are matched
 # to it.
+#
+# TEMPORARILY pointed at a fork. 8d01a1b is upstream jazzy (3dc2b5e, which
+# this was previously pinned to) plus one commit declaring the gripper's five
+# follower joints to ros2_control with mimic="true". Without it the gripper
+# linkage comes apart in simulation, because this sim runs on dartsim and
+# dartsim has no mimic constraint support (gazebosim/gz-physics#432).
+#
+# That commit is upstream as xArm-Developer/xarm_ros2#180. When it merges,
+# point the url back at xArm-Developer and pin the merged commit; nothing
+# else here needs to change. The fork exists only so a fresh clone works
+# today rather than whenever the PR lands.
 repositories:
   xarm_ros2:
     type: git
-    url: https://github.com/xArm-Developer/xarm_ros2.git
-    version: 3dc2b5e
+    url: https://github.com/S-abk/xarm_ros2.git
+    version: 8d01a1ba12fa18eb352b085fcb1d36a26e14723f
