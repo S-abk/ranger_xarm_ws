@@ -2,34 +2,56 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <!-- Ranger Mini V3 four-wheel independent steering (4WIS) drive.
 
-       Geometry is measured off ranger_mini_v3_cad.stl rather than taken from
-       a datasheet, by least-squares circle fit to the lower arc of each tyre
-       (the arc nothing else can occlude). Fit residual is under 2 mm:
+       Geometry is measured off ranger_mini_v3_cad.stl rather than taken
+       from a datasheet. The tyre is isolated as its own connected
+       component (scripts/split_wheel_meshes.py) and its axis fitted from
+       the tread, which makes it a clean cylinder to measure:
 
-         wheel radius   0.1026 m   (205 mm dia, the platform's 8" wheel)
-         wheelbase      0.494 m    (front axle +0.2461, rear -0.2479)
-         track          0.3704 m   (+/-0.1852)
+         wheel radius   0.100036 m  (200 mm dia, the platform's stock wheel)
+         wheelbase      0.494 m     (+/-0.2470)
+         track          0.3704 m    (+/-0.1852)
          axle height    ground_z_nom + radius, so the tread sits exactly on
                         the documented ground plane instead of near it
 
-       Front/rear and left/right differ by 1-2 mm in the mesh, which is
-       tessellation noise on a symmetric platform, so the values above are
-       symmetrised; asymmetric wheelbase would otherwise show up as a
-       phantom yaw bias in the drive kinematics.
+       The radius previously read 0.1026 here, from a circle fit to "the
+       lower arc of each tyre" that had picked up the suspension sitting
+       inside the same envelope. The tread's own radius is 100.036 mm with
+       a 99.9th percentile of 100.032, and the lowest point of the whole
+       CAD is -327.029 mm, exactly ground_z. Those two give an axle at
+       -226.993 mm, which is where fitting the rear tyre's axis
+       independently puts it (-226.998). A 2.6 mm error is invisible on
+       screen but it scales every wheel speed the kinematics computes, so
+       on hardware the platform would have run 2.6% fast.
+
+       Front/rear and left/right differ by a few tenths of a millimetre in
+       the mesh, which is tessellation noise on a symmetric platform, so
+       the values above are symmetrised; an asymmetric wheelbase would
+       otherwise show up as a phantom yaw bias in the drive kinematics.
 
        Each corner is steer (revolute about Z, through the wheel centre) then
        roll (continuous about Y). Zero scrub radius: the real platform has a
        small caster offset, but modelling it buys nothing here and makes the
        inverse kinematics implicit rather than closed-form.
 
-       The wheels are COLLISION ONLY on purpose. ranger_mini_v3_cad.stl
-       already draws four wheels moulded into the chassis at zero steer; a
-       second set of visuals would render eight. The trade is that the wheels
-       do not visibly turn; verify steering from joint states, not the GUI. -->
+       The wheels used to be COLLISION ONLY, because ranger_mini_v3_cad.stl
+       draws four wheels moulded into the chassis and a second set of
+       visuals would have rendered eight. That made the robot look
+       completely static: the wheels you could see were welded to
+       base_link, and the ones that turned were invisible.
+
+       So the CAD is split instead. scripts/split_wheel_meshes.py cuts the
+       four wheels out as their own meshes and leaves a body mesh behind,
+       and each wheel is given to the link it belongs to. There are still
+       only four. Because wheel_link is a child of steer_link, one visual
+       shows both the roll and the steer.
+
+       A cylinder primitive would not have worked. A featureless cylinder
+       rotating about its own axis is indistinguishable from a stationary
+       one; it is the spokes and tread that make the rotation legible. -->
 
   <xacro:macro name="ranger_wheels" params="parent:='base_link' ground_z:=-0.327028595">
 
-    <xacro:property name="wheel_radius" value="0.1026"/>
+    <xacro:property name="wheel_radius" value="0.100036"/>
     <xacro:property name="wheel_width" value="0.070"/>
     <xacro:property name="half_wheelbase" value="0.2470"/>
     <xacro:property name="half_track" value="0.1852"/>
@@ -91,6 +113,17 @@
              is kinematically identical for a wheel on flat ground. The cost
              is that it cannot tip onto a tyre edge or climb a square lip,
              neither of which an empty ground plane offers. -->
+        <!-- The wheel cut out of the platform CAD, re-origined on its own
+             fitted axis of rotation so it spins true rather than wobbling.
+             Regenerate with scripts/split_wheel_meshes.py. -->
+        <visual name="${name}_wheel_visual">
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="package://ranger_xarm_description/meshes/visual/ranger_wheel_${name}.stl"
+                  scale="0.001 0.001 0.001"/>
+          </geometry>
+          <material name="ranger_wheel_material"><color rgba="0.25 0.25 0.27 1"/></material>
+        </visual>
         <collision name="${name}_tyre">
           <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry>
