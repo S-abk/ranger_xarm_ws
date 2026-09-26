@@ -107,6 +107,39 @@ git status --ignored src/ranger_xarm_description
 
 ---
 
+## Measure the loaded rolling radius on hardware
+
+`wheel_radius` is 0.100036 m, measured off the tyre in
+`ranger_mini_v3_cad.stl` and corroborated by AgileX's own `wheel_v3.dae`
+(node matrix 0.1003675). That is the **unloaded** radius: CAD does not
+sag. On the real platform each tyre carries roughly a quarter of ~100 kg
+and deflects, so the rolling radius under load is smaller by an amount
+nobody has measured.
+
+Both simulators inherit the same optimism, because the tyre is a rigid
+collision sphere in each, so neither will ever reveal it.
+
+It matters in one direction. The kinematics use `omega = v / r`, so a
+radius larger than the true rolling radius makes the platform run **slow**
+by that ratio, and odometry built the same way over-reports distance.
+That is opposite in sign to the 0.1026 error already corrected, so the
+two partly cancelled.
+
+Measuring it needs no instrumentation:
+
+1. Mark a wheel and the floor, drive a straight line over a measured
+   distance at the payload the robot actually carries.
+2. Count wheel revolutions, or integrate `/dynamic_joint_states` position
+   with unwrapping.
+3. `r_eff = distance / total_radians`.
+
+Deliberately a ratio of two measured quantities with no clock in it,
+which is what makes it immune to the sim-time trap in
+`ranger_xarm_isaac`'s README, and it is the same quantity that showed
+0.1026 was wrong. Then set `wheel_radius` (and the `ranger_4wis_controller`
+default) from the loaded figure, or expose it as a parameter if the
+payload varies enough to matter.
+
 ## Optional: purge the Ouster metadata from published history
 
 **Repo:** this one · **File:** `192.168.1-metadata.json` (removed from the tree)
