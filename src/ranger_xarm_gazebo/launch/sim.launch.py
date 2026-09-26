@@ -20,7 +20,8 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
-                            OpaqueFunction, RegisterEventHandler)
+                            OpaqueFunction, RegisterEventHandler,
+                            SetEnvironmentVariable)
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -222,11 +223,40 @@ def launch_setup(context, *args, **kwargs):
     ]
 
 
+def gz_resource_path():
+    """Every share directory on the ament prefix path, for gz to search.
+
+    sdformat rewrites package:// to model:// when it converts the URDF,
+    so gz resolves meshes by searching GZ_SIM_RESOURCE_PATH for a
+    directory named after the package. A package only lands there if it
+    exports a model path, and the vendored xarm_description does not:
+    upstream has no reason to, since it targets the real arm rather than
+    gz. The result is 112 "Unable to find file with URI
+    [model://xarm_description/...]" errors and an arm with no visual
+    meshes at all, while the ranger meshes load fine because
+    ranger_xarm_description does carry the export. An invisible arm on a
+    visible robot is a confusing first run for anyone cloning this.
+
+    Rather than patch someone else's package.xml, hand gz every share
+    directory the workspace already has. Anything overlaid is prepended,
+    so an existing value still wins.
+    """
+    shares = [os.path.join(p, 'share')
+              for p in os.environ.get('AMENT_PREFIX_PATH', '').split(os.pathsep)
+              if p]
+    existing = os.environ.get('GZ_SIM_RESOURCE_PATH', '')
+    if existing:
+        shares.append(existing)
+    # dict.fromkeys keeps first-seen order while dropping duplicates.
+    return os.pathsep.join(dict.fromkeys(s for s in shares if s))
+
+
 def generate_launch_description():
     default_world = os.path.join(
         get_package_share_directory('ranger_xarm_gazebo'),
         'worlds', 'empty_ground.sdf')
     return LaunchDescription([
+        SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH', gz_resource_path()),
         DeclareLaunchArgument('world', default_value=default_world,
                               description='Absolute path to a gz world file.'),
         DeclareLaunchArgument('headless', default_value='false',

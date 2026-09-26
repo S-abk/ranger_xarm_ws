@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Split the Ranger CAD mesh into a body and four wheels.
+"""Split the Ranger CAD mesh into a body, four wheels and four knuckles.
 
 ranger_mini_v3_cad.stl is the whole vehicle as one mesh, wheels included,
 and it hangs off base_link. So the wheels you see are welded to the
@@ -19,6 +19,20 @@ exports usually are, so the split is exact: no triangle is invented,
 moved between parts by a distance threshold, or lost. Each wheel is
 re-origined on its own axis of rotation, fitted from the tyre itself
 rather than assumed, so it spins true instead of wobbling.
+
+The steering knuckles get the same treatment, for the same reason: with
+only the wheel split out, the wheel turned but the casting above it did
+not, so the corner sheared visibly at full lock.
+
+Which parts belong to a knuckle is less obvious than which belong to a
+wheel, because a corner is thirty-odd components (flange, bolt circle,
+motor housing, upright) rather than one. They are selected by distance
+from the steering axis, and the threshold is not arbitrary: between 20
+and 40 mm the triangle count per corner sits on a plateau at ~13050,
+varying by 0.2% between corners, which is tessellation noise on a
+symmetric platform. Widening to 60 mm jumps the count and makes the four
+corners genuinely different (14547 vs 15739), which is chassis being
+dragged in. 30 mm sits in the middle of the plateau.
 
 Run from the package root; writes into meshes/visual/.
 """
@@ -113,6 +127,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--mesh', default='meshes/visual/ranger_mini_v3_cad.stl')
     ap.add_argument('--outdir', default='meshes/visual')
+    ap.add_argument('--knuckle-radius', type=float, default=30.0,
+                    help='mm from the steering axis; components whose centroid '
+                         'falls inside belong to the knuckle (plateau is 20-40)')
     args = ap.parse_args()
 
     if not os.path.exists(args.mesh):
@@ -154,6 +171,28 @@ def main():
               f'x={cx:8.3f} z={cz:8.3f} mm  (station x={wx:.1f} z={wz:.1f})'
               f' -> {os.path.basename(path)}')
         used.append(mask)
+
+        # The knuckle: everything else clustered on this steering axis.
+        # Shifted by the same vector as the wheel, so the two stay aligned
+        # with each other and with the link they hang off.
+        kmask = np.zeros(len(tris), dtype=bool)
+        for comp in np.unique(label):
+            cm = label == comp
+            if cm is None or (cm & mask).any():
+                continue
+            ctr = centroids[cm].mean(axis=0)
+            if np.hypot(ctr[0] - wx, ctr[1] - wy) >= args.knuckle_radius:
+                continue
+            if tris[cm].reshape(-1, 3)[:, 2].min() < -320.0:
+                continue     # reaches the ground: that is a wheel, not a knuckle
+            kmask |= cm
+        if kmask.any():
+            kpath = os.path.join(args.outdir, f'ranger_knuckle_{name}.stl')
+            write_stl(kpath, normals[kmask], tris[kmask] - shift, attrs[kmask])
+            print(f'  {name:12s} {kmask.sum():6d} tris  knuckle (r<'
+                  f'{args.knuckle_radius:.0f} mm of the steer axis)'
+                  f' -> {os.path.basename(kpath)}')
+            used.append(kmask)
 
     body = ~np.any(used, axis=0)
     path = os.path.join(args.outdir, 'ranger_mini_v3_cad_body.stl')
