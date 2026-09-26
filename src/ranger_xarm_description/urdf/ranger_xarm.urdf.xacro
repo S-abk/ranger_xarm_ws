@@ -5,6 +5,7 @@
   <xacro:include filename="$(find ranger_xarm_description)/urdf/sensor_frames.xacro"/>
   <xacro:include filename="$(find ranger_xarm_description)/urdf/laptop_collision.xacro"/>
   <xacro:include filename="$(find ranger_xarm_description)/urdf/ranger_wheels.xacro"/>
+  <xacro:include filename="$(find ranger_xarm_description)/urdf/sensors_gazebo.xacro"/>
 
   <xacro:arg name="use_xarm" default="true"/>
   <xacro:arg name="use_static_geometry" default="true"/>
@@ -51,6 +52,11 @@
                             the arm's reaction forces walk it across the
                             floor. Turn it OFF whenever use_wheels is on;
                             they are opposites, not companions. -->
+  <!-- gz <sensor> tags for the lidars, IMU and camera. Off by default:
+       they are simulator-specific, they cost render passes every frame,
+       and anything consuming this description for MoveIt, RViz or the
+       real robot wants the frames without them. -->
+  <xacro:arg name="gz_sensors" default="false"/>
   <xacro:arg name="use_wheels" default="false"/>
   <xacro:arg name="fix_base_to_world" default="true"/>
   <xacro:arg name="wheels_ros2_control_plugin" default="gz_ros2_control/GazeboSimSystem"/>
@@ -132,4 +138,9 @@
       baud_checkset="$(arg xarm_baud_checkset)"
       default_gripper_baud="$(arg xarm_default_gripper_baud)"/>
   </xacro:if>
+
+  <xacro:if value="$(arg gz_sensors)">
+    <xacro:ranger_gazebo_sensors/>
+  </xacro:if>
+
 </robot>

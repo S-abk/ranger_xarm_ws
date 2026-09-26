@@ -1,0 +1,168 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Simulated sensors for gz.
+
+       The description carries the sensor links, meshes and CAD-derived
+       mount poses, but carried no <sensor> tags, so gz rendered them and
+       nothing more. This adds the four the platform actually has.
+
+       Topics and frame ids match what the REAL drivers publish, because
+       ranger_xarm_sensors already defines that contract and everything
+       downstream is written against it. The Isaac side publishes the same
+       set, so the two simulators are interchangeable behind it.
+
+       The sensor-internal frames (os_lidar, os_imu, the optical frames)
+       are deliberately NOT links here. On hardware they belong to the
+       drivers, which publish them from the sensor's own metadata and
+       calibration; that split is why d435_mount_link exists in this
+       description and nothing below it does. Putting them in the URDF
+       would collide with the driver's own transforms the moment a real
+       sensor is plugged in. gz names them with <gz_frame_id> and
+       sim.launch.py publishes the transforms, which is what the driver
+       does.
+
+       Specs are datasheet figures, not guesses, and where gz cannot
+       express something it is called out rather than quietly rounded. -->
+
+  <xacro:macro name="ranger_gazebo_sensors"
+               params="ouster:=true rplidar:=true d435:=true imu:=true">
+
+    <!-- Ouster OS0. 90 deg vertical FOV (+/-45) is what makes it an OS0
+         rather than an OS1 or OS2. 128 channels at 1024 azimuth steps and
+         10 Hz matches the profile the Isaac side uses, so a bag from one
+         has the same shape as a bag from the other. Range is the real
+         0.3-50 m; note Isaac's shipped OS0 profile says 0.5-75, so the two
+         simulators disagree at the extremes and the datasheet is right. -->
+    <xacro:if value="${ouster}">
+      <gazebo reference="os_sensor">
+        <sensor name="ouster_os0" type="gpu_lidar">
+          <!-- OS-series: the lidar origin sits 36.18 mm above the sensor
+               origin and is yawed 180 deg. Family defaults; a specific
+               unit's values come from its own metadata JSON. -->
+          <pose>0 0 0.03618 0 0 ${pi}</pose>
+          <!-- Deliberately 'ouster', not 'ouster/points'. A gz
+               gpu_lidar publishes a LaserScan on <topic> and the point
+               cloud on <topic>/points, so naming this 'ouster/points'
+               puts the cloud on 'ouster/points/points' and leaves a
+               flattened single-ring scan on the name you wanted. -->
+          <topic>ouster</topic>
+          <gz_frame_id>os_lidar</gz_frame_id>
+          <update_rate>10</update_rate>
+          <always_on>1</always_on>
+          <visualize>false</visualize>
+          <lidar>
+            <scan>
+              <horizontal>
+                <samples>1024</samples>
+                <resolution>1</resolution>
+                <min_angle>${-pi}</min_angle>
+                <max_angle>${pi}</max_angle>
+              </horizontal>
+              <vertical>
+                <samples>128</samples>
+                <resolution>1</resolution>
+                <min_angle>${-pi/4}</min_angle>
+                <max_angle>${pi/4}</max_angle>
+              </vertical>
+            </scan>
+            <range>
+              <min>0.3</min>
+              <max>50.0</max>
+              <resolution>0.001</resolution>
+            </range>
+          </lidar>
+        </sensor>
+      </gazebo>
+    </xacro:if>
+
+    <!-- The OS0's built-in IMU. It is inside the lidar, not a separate
+         device, which is why it hangs off os_sensor rather than a mount
+         of its own. gz reports gravity on a stationary accelerometer, as
+         the real one does, so nothing extra is needed to avoid an
+         attitude filter downstream reading free fall. -->
+    <xacro:if value="${imu}">
+      <gazebo reference="os_sensor">
+        <sensor name="ouster_imu" type="imu">
+          <topic>ouster/imu</topic>
+          <gz_frame_id>os_imu</gz_frame_id>
+          <update_rate>100</update_rate>
+          <always_on>1</always_on>
+        </sensor>
+      </gazebo>
+    </xacro:if>
+
+    <!-- RPLIDAR A1M8. Datasheet: 0.15-12 m, 5.5 Hz typical, 8000
+         samples/s, which is 1454 points per revolution. Unlike Isaac's
+         RTX lidar, whose scan rate attribute is integral and forced 6 Hz,
+         gz takes the 5.5 directly, so this one is the sensor's actual
+         default. -->
+    <xacro:if value="${rplidar}">
+      <gazebo reference="laser_frame">
+        <sensor name="rplidar_a1m8" type="gpu_lidar">
+          <pose>0 0 0 0 0 0</pose>
+          <topic>scan</topic>
+          <gz_frame_id>laser_frame</gz_frame_id>
+          <update_rate>5.5</update_rate>
+          <always_on>1</always_on>
+          <visualize>false</visualize>
+          <lidar>
+            <scan>
+              <horizontal>
+                <samples>1454</samples>
+                <resolution>1</resolution>
+                <min_angle>${-pi}</min_angle>
+                <max_angle>${pi}</max_angle>
+              </horizontal>
+              <!-- One plane. This is what makes it a 2D scanner, and it
+                   is the thing Isaac's RTX lidar silently got wrong when
+                   an unknown config name fell back to a 32-beam fan. -->
+              <vertical>
+                <samples>1</samples>
+                <resolution>1</resolution>
+                <min_angle>0</min_angle>
+                <max_angle>0</max_angle>
+              </vertical>
+            </scan>
+            <range>
+              <min>0.15</min>
+              <max>12.0</max>
+              <resolution>0.013</resolution>
+            </range>
+          </lidar>
+        </sensor>
+      </gazebo>
+    </xacro:if>
+
+    <!-- RealSense D435. gz's rgbd_camera publishes colour, depth, a point
+         cloud and camera_info off one sensor, which carries the same
+         simplification the Isaac side has: colour and depth share an
+         imager, so they are perfectly registered and share the colour's
+         69 deg FOV. On hardware the depth pair is wider (87 deg) and sits
+         a baseline away with its own intrinsics. -->
+    <xacro:if value="${d435}">
+      <gazebo reference="d435_link">
+        <sensor name="d435" type="rgbd_camera">
+          <pose>0 0 0 0 0 0</pose>
+          <topic>camera/d435</topic>
+          <gz_frame_id>d435_color_optical_frame</gz_frame_id>
+          <update_rate>30</update_rate>
+          <always_on>1</always_on>
+          <camera>
+            <horizontal_fov>${69.0*pi/180.0}</horizontal_fov>
+            <image>
+              <width>848</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.105</near>
+              <far>10.0</far>
+            </clip>
+            <optical_frame_id>d435_color_optical_frame</optical_frame_id>
+          </camera>
+        </sensor>
+      </gazebo>
+    </xacro:if>
+
+  </xacro:macro>
+</robot>
