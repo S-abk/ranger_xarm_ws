@@ -184,6 +184,16 @@ def launch_setup(context, *args, **kwargs):
                    '-z', '0.33'],
     )
 
+    # Ground truth is bridged whenever the base is driven, independently
+    # of sensors:=, because it is the reference for odometry rather than a
+    # sensor.
+    truth_bridge = Node(
+        package='ros_gz_bridge', executable='parameter_bridge',
+        output='screen', name='ground_truth_bridge',
+        parameters=[{'use_sim_time': True}],
+        arguments=['/ground_truth/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry'],
+    ) if drive_base else None
+
     clock_bridge = Node(
         package='ros_gz_bridge', executable='parameter_bridge', output='screen',
         arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
@@ -219,6 +229,13 @@ def launch_setup(context, *args, **kwargs):
     wheels = spawner('ranger_wheel_controller')
     kinematics = Node(
         package='ranger_xarm_gazebo', executable='ranger_4wis_controller.py',
+        output='screen', parameters=[{'use_sim_time': True}],
+    )
+    # Dead reckoning from the wheel encoders. Ground truth comes from the
+    # OdometryPublisher plugin in the description and lands on
+    # /ground_truth/odom, so the two can be compared rather than confused.
+    odometry = Node(
+        package='ranger_xarm_gazebo', executable='wheel_odometry.py',
         output='screen', parameters=[{'use_sim_time': True}],
     )
 
@@ -292,11 +309,20 @@ def launch_setup(context, *args, **kwargs):
         parameters=[{'use_sim_time': True}],
     )
 
+    # Spawners only. serialise() chains on process EXIT, and a spawner
+    # exits once its controller is up, which is what makes the chain
+    # advance. A long-running node put in here never exits, so everything
+    # behind it in the chain is never started at all -- silently, because
+    # the launch itself is perfectly healthy.
     after_jsb = [arm]
     if add_gripper.lower() in ('true', '1', 'yes'):
         after_jsb.append(gripper)
     if drive_base:
-        after_jsb += [steer, wheels, kinematics]
+        after_jsb += [steer, wheels]
+
+    # Plain nodes, started alongside. Both tolerate their inputs not
+    # existing yet.
+    base_nodes = [kinematics, odometry] if drive_base else []
 
     return [
         gz, rsp, clock_bridge, spawn,
@@ -321,6 +347,8 @@ def launch_setup(context, *args, **kwargs):
         # leave 0 deg, so a crab command drives the robot straight forward
         # and a spin barely rotates it, which reads as broken kinematics.
         *serialise([spawn, jsb] + after_jsb),
+        *base_nodes,
+        *([truth_bridge] if truth_bridge is not None else []),
         *sensor_nodes,
         rviz,
     ]

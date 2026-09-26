@@ -203,6 +203,24 @@
       </gazebo>
     </xacro:macro>
 
+    <!-- Ground truth, and labelled as such. OdometryPublisher reads the
+         model pose straight out of the simulator, so it never slips and
+         never drifts. It is a REFERENCE to score dead reckoning against,
+         not a substitute for it; wheel_odometry.py owns /odom.
+         publish_tf is off deliberately, because a ground-truth transform
+         competing for odom -> base_link would silently correct every
+         error the comparison is meant to reveal. -->
+    <gazebo>
+      <plugin filename="gz-sim-odometry-publisher-system"
+              name="gz::sim::systems::OdometryPublisher">
+        <odom_frame>ground_truth_odom</odom_frame>
+        <robot_base_frame>base_link</robot_base_frame>
+        <odom_topic>ground_truth/odom</odom_topic>
+        <dimensions>3</dimensions>
+        <odom_publish_frequency>50</odom_publish_frequency>
+      </plugin>
+    </gazebo>
+
     <xacro:ranger_corner name="front_left"  x="${ half_wheelbase}" y="${ half_track}"/>
     <xacro:ranger_corner name="front_right" x="${ half_wheelbase}" y="${-half_track}"/>
     <xacro:ranger_corner name="rear_left"   x="${-half_wheelbase}" y="${ half_track}"/>
