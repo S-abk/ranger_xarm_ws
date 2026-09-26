@@ -4,6 +4,14 @@
      Deliberately empty: this workspace is the platform, not any one
      application. Put your own world in your own package and pass it with
      world:=/absolute/path.sdf rather than adding scenery here. -->
+<!-- empty_ground with obstacles at known positions, for checking the
+     sensors return what arithmetic says they should. On a bare plane a
+     working sensor and a broken one look identical: the 2D scanner sees
+     only the robot itself and the 3D one sees only the floor.
+
+     Positions match the obstacle flag in ranger_xarm_isaac exactly, so the same
+     predictions apply to both simulators and a disagreement between them
+     is a real disagreement rather than a different test. -->
 <sdf version="1.9">
   <world name="empty_ground">
     <physics name="1ms" type="ignored">
@@ -66,5 +74,48 @@
         </visual>
       </link>
     </model>
+  
+    <model name="BoxA">
+      <static>true</static>
+      <pose>3.0 0.0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.6 0.6 1.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.6 0.6 1.0</size></box></geometry>
+          <material><ambient>0.4 0.4 0.45 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="BoxB">
+      <static>true</static>
+      <pose>-2.5 1.5 0.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.8 0.8 0.8</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.8 0.8 0.8</size></box></geometry>
+          <material><ambient>0.4 0.4 0.45 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="BoxC">
+      <static>true</static>
+      <pose>0.0 -3.0 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.2 0.4 1.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.2 0.4 1.5</size></box></geometry>
+          <material><ambient>0.4 0.4 0.45 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
   </world>
 </sdf>

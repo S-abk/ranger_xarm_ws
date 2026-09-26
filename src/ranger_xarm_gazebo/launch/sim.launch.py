@@ -50,6 +50,7 @@ def launch_setup(context, *args, **kwargs):
     headless = LaunchConfiguration('headless').perform(context).lower() in ('true', '1', 'yes')
     add_gripper = LaunchConfiguration('add_gripper').perform(context)
     drive_base = LaunchConfiguration('drive_base').perform(context).lower() in ('true', '1', 'yes')
+    sensors = LaunchConfiguration('sensors').perform(context).lower() in ('true', '1', 'yes')
     prefix = 'xarm_'
 
     # The upstream controller config is written for a bare arm. This rewrites
@@ -132,6 +133,7 @@ def launch_setup(context, *args, **kwargs):
             # arm, and it would pin a wheeled one to the spot.
             ' use_wheels:=', 'true' if drive_base else 'false',
             ' fix_base_to_world:=', 'false' if drive_base else 'true',
+            ' gz_sensors:=', 'true' if sensors else 'false',
         ]), value_type=str)
 
     gz = IncludeLaunchDescription(
@@ -220,6 +222,70 @@ def launch_setup(context, *args, **kwargs):
         output='screen', parameters=[{'use_sim_time': True}],
     )
 
+    # Sensor bridges and the sensor-internal frames.
+    #
+    # gz publishes each sensor on its own transport; parameter_bridge
+    # carries them across with '[' meaning gz -> ROS only. The camera
+    # topics are remapped rather than renamed at the source, because gz's
+    # rgbd_camera derives image/depth_image/camera_info from one <topic>
+    # and the RealSense driver's layout is not derivable from it.
+    sensor_nodes = []
+    if sensors:
+        sensor_nodes.append(Node(
+            package='ros_gz_bridge', executable='parameter_bridge',
+            output='screen', name='sensor_bridge',
+            parameters=[{'use_sim_time': True}],
+            arguments=[
+                '/ouster/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
+                # The 2D scanner's LaserScan sits on <topic> itself;
+                # its unused /scan/points cloud is left unbridged.
+                '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+                '/ouster/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
+                '/camera/d435/image@sensor_msgs/msg/Image[gz.msgs.Image',
+                '/camera/d435/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
+                '/camera/d435/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            ],
+            remappings=[
+                ('/camera/d435/image', '/camera/d435/color/image_raw'),
+                ('/camera/d435/depth_image', '/camera/d435/depth/image_rect_raw'),
+                ('/camera/d435/camera_info', '/camera/d435/color/camera_info'),
+            ],
+        ))
+
+        # The frames the sensors publish INTO. These are not URDF links
+        # on purpose: on hardware the drivers own them, publishing them
+        # from the sensor's own metadata and calibration, which is why
+        # d435_mount_link is in the description and nothing below it is.
+        # In simulation nobody else will, so the sim does it, exactly as
+        # the driver would. ranger_xarm_isaac does the same thing through
+        # a ROS2PublishTransformTree node.
+        def static_tf(name, parent, child, xyz, rpy):
+            return Node(
+                package='tf2_ros', executable='static_transform_publisher',
+                name=name, output='log',
+                parameters=[{'use_sim_time': True}],
+                arguments=['--x', xyz[0], '--y', xyz[1], '--z', xyz[2],
+                           '--roll', rpy[0], '--pitch', rpy[1], '--yaw', rpy[2],
+                           '--frame-id', parent, '--child-frame-id', child])
+
+        sensor_nodes += [
+            # OS-series family defaults: lidar origin 36.18 mm above the
+            # sensor origin, yawed 180. A specific unit's numbers come
+            # from its own metadata JSON, which this workspace does not
+            # commit.
+            static_tf('os_lidar_tf', 'os_sensor', 'os_lidar',
+                      ('0', '0', '0.03618'), ('0', '0', '3.14159265')),
+            static_tf('os_imu_tf', 'os_sensor', 'os_imu',
+                      ('0', '0', '0'), ('0', '0', '0')),
+            # ROS optical frames are +Z forward, +Y down, where the link
+            # is +X forward, +Z up. This is that rotation, and it is the
+            # same one every camera driver publishes.
+            static_tf('d435_color_tf', 'd435_link', 'd435_color_optical_frame',
+                      ('0', '0', '0'), ('-1.5707963', '0', '-1.5707963')),
+            static_tf('d435_depth_tf', 'd435_link', 'd435_depth_optical_frame',
+                      ('0', '0', '0'), ('-1.5707963', '0', '-1.5707963')),
+        ]
+
     rviz = Node(
         package='rviz2', executable='rviz2', output='screen',
         condition=IfCondition(LaunchConfiguration('start_rviz')),
@@ -255,6 +321,7 @@ def launch_setup(context, *args, **kwargs):
         # leave 0 deg, so a crab command drives the robot straight forward
         # and a spin barely rotates it, which reads as broken kinematics.
         *serialise([spawn, jsb] + after_jsb),
+        *sensor_nodes,
         rviz,
     ]
 
@@ -300,6 +367,12 @@ def generate_launch_description():
         DeclareLaunchArgument('add_gripper', default_value='true',
                               description='Include the xArm gripper.'),
         DeclareLaunchArgument('start_rviz', default_value='false'),
+        DeclareLaunchArgument(
+            'sensors', default_value='false',
+            description='Simulate the lidars, IMU and camera, and bridge '
+                        'them to the topics the real drivers use. Off by '
+                        'default: each rendering sensor costs a render pass '
+                        'every frame.'),
         DeclareLaunchArgument(
             'drive_base', default_value='false',
             description='Add the 4WIS wheels and drive the base from '
