@@ -32,6 +32,17 @@ from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
+def serialise(actions):
+    """Chain actions so each starts only once the previous has exited.
+
+    Returns the event handlers; the first action still has to be started
+    by whoever owns the list.
+    """
+    return [RegisterEventHandler(OnProcessExit(target_action=prev,
+                                               on_exit=[nxt]))
+            for prev, nxt in zip(actions, actions[1:])]
+
+
 def launch_setup(context, *args, **kwargs):
     from uf_ros_lib.uf_robot_utils import generate_ros2_control_params_temp_file
 
@@ -178,9 +189,20 @@ def launch_setup(context, *args, **kwargs):
     )
 
     def spawner(name):
+        # The timeouts are all longer than the defaults on purpose. The
+        # controller_manager here lives inside the gz plugin, so it appears
+        # only once the model has spawned, and it answers slowly while gz is
+        # still loading 34 MB of meshes. switch-timeout in particular is
+        # documented for exactly this case ("paused simulations at startup").
+        # A spawner that gives up does not retry: it exits non-zero and that
+        # controller is simply absent, which then looks like a robot that
+        # drives straight when told to crab.
         return Node(package='controller_manager', executable='spawner',
                     arguments=[name, '--controller-manager',
-                               '/controller_manager'],
+                               '/controller_manager',
+                               '--controller-manager-timeout', '60',
+                               '--service-call-timeout', '30',
+                               '--switch-timeout', '30'],
                     output='screen')
 
     jsb = spawner('joint_state_broadcaster')
@@ -215,10 +237,24 @@ def launch_setup(context, *args, **kwargs):
         # Controllers are claimed only once the model exists in gz: the
         # controller_manager the spawners talk to is created by the plugin
         # inside the spawned model, so spawning them earlier is a race.
-        RegisterEventHandler(OnProcessExit(target_action=spawn,
-                                           on_exit=[jsb])),
-        RegisterEventHandler(OnProcessExit(target_action=jsb,
-                                           on_exit=after_jsb)),
+        #
+        # One at a time, not all at once. Firing the remaining spawners
+        # together on the same event had four of them calling load_controller
+        # and configure on a single-threaded controller_manager
+        # simultaneously, and they interfered: calls timed out and were
+        # retried against a manager that had in fact already serviced them,
+        # giving "Controller already loaded, skipping load_controller"
+        # followed by "Failed to configure controller", or a configure that
+        # arrived before its own load with "Could not configure controller
+        # ... because no controller with this name exists". Which controllers
+        # survived varied run to run.
+        #
+        # None of that reports itself usefully. The launch carries on, the
+        # missing controller is just absent, and the visible symptom is much
+        # further away: with ranger_steer_controller gone the wheels never
+        # leave 0 deg, so a crab command drives the robot straight forward
+        # and a spin barely rotates it, which reads as broken kinematics.
+        *serialise([spawn, jsb] + after_jsb),
         rviz,
     ]
 
