@@ -123,6 +123,70 @@ both and a disagreement between them is a real disagreement.
 latter covers the rendering sensors; an `imu` sensor is simply never updated
 without the former, and nothing complains. The topic just never appears.
 
+## Odometry and ground truth are different topics
+
+`/odom` is dead reckoning from the wheel encoders. `/ground_truth/odom` is
+the simulator's own answer. They were the same topic until now, and in
+Isaac's case `/odom` *was* `IsaacComputeOdometry` — the chassis pose read
+out of the physics engine, published under odometry's name. Anything
+downstream believed it had odometry when what it had was the answer, so a
+state estimator fed from it could not be wrong and could not be tested.
+
+`wheel_odometry.py` uses only what the real platform knows: steer angle
+and differenced wheel position, solved by least squares across all four
+corners (the inverse of the controller's IK). Wheel travel is differenced
+from POSITION rather than read from the simulator's velocity estimate,
+because a real encoder counts, and counting is what makes odometry drift
+the way real odometry drifts.
+
+```
+                gz            Isaac
+path length     5.902 m       5.422 m
+position error  0.003 m       0.002 m
+                0.06%         0.05% of distance
+heading error   -0.09 deg     +0.62 deg
+```
+
+### Two things this does not prove
+
+**The simulators barely slip.** On flat ground with sphere contacts, dead
+reckoning tracks ground truth to well under a tenth of a percent. Real
+odometry does not do that. So this apparatus can demonstrate that an
+estimator is *wrong*, but it cannot yet demonstrate that one is *robust*:
+there is almost no drift here to be robust against. Introducing slip
+(lower friction, payload, uneven ground) is what would make it a real
+test.
+
+**Error is not the same as drift.** The gz numbers above are from the
+empty world. The same legs run in `sensor_test.sdf` gave 1.94% and +2.29
+deg, because the robot grazed a box and the wheels spun — which is
+exactly what odometry is supposed to get wrong, and a reminder that a
+single number here characterises the run, not the estimator.
+
+### What a wrong wheel radius does
+
+`wheel_radius` is a multiplier on every wheel displacement, and in a 4WIS
+forward kinematic it scales the solved yaw as well as the solved
+translation, because both come out of the same least-squares system. A
+radius error is therefore a heading error too, and on a curved path the
+heading error compounds the position error rather than adding to it.
+
+Measured on the same 5.6 m path with 137.6 deg of turning:
+
+```
+r = 0.100036 (measured)   0.006 m   0.10% of path   -0.06 deg
+r = 0.1026   (legacy)     0.418 m   7.41% of path   +3.47 deg
+```
+
+A 2.56% radius error produced a 7.41% position error. This is stated
+because `wheel_radius` read 0.1026 in this workspace until it was
+measured, and anything calibrated against odometry during that period
+inherited it. That includes `ranger_xarm_bringup`'s EKF, whose gyro would
+have disagreed with wheel heading by roughly this much on this kind of
+path. Whether that actually mistuned it is **not established here** — the
+point is that the mechanism exists and is now measurable, not that a
+verdict has been reached.
+
 ## What this does not do
 
 It does not start MoveIt. Bring the simulation up first, confirm the
