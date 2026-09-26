@@ -16,12 +16,30 @@
         <mass value="47.0"/>
         <inertia ixx="1.6086" ixy="0" ixz="0" iyy="3.1592" iyz="0" izz="3.5065"/>
       </inertial>
-      <visual name="ranger_cad_visual">
-        <geometry>
-          <mesh filename="package://ranger_xarm_description/meshes/visual/ranger_mini_v3_cad.stl" scale="0.001 0.001 0.001"/>
-        </geometry>
-        <material name="ranger_cad_material"><color rgba="0.72 0.72 0.68 1"/></material>
-      </visual>
+      <!-- Which CAD to draw depends on whether the wheels are their own
+           links. ranger_mini_v3_cad.stl is the whole vehicle with its
+           wheels moulded in at zero steer, which is right when nothing
+           else draws them. Once ranger_wheels.xacro provides real wheel
+           links, those moulded wheels are welded to base_link and sit on
+           top of the ones that actually turn, so the robot drives while
+           appearing completely static. The body mesh is the same CAD with
+           the four wheels cut out; see scripts/split_wheel_meshes.py. -->
+      <xacro:if value="${wheels_modelled}">
+        <visual name="ranger_cad_visual">
+          <geometry>
+            <mesh filename="package://ranger_xarm_description/meshes/visual/ranger_mini_v3_cad_body.stl" scale="0.001 0.001 0.001"/>
+          </geometry>
+          <material name="ranger_cad_material"><color rgba="0.72 0.72 0.68 1"/></material>
+        </visual>
+      </xacro:if>
+      <xacro:unless value="${wheels_modelled}">
+        <visual name="ranger_cad_visual">
+          <geometry>
+            <mesh filename="package://ranger_xarm_description/meshes/visual/ranger_mini_v3_cad.stl" scale="0.001 0.001 0.001"/>
+          </geometry>
+          <material name="ranger_cad_material"><color rgba="0.72 0.72 0.68 1"/></material>
+        </visual>
+      </xacro:unless>
       <xacro:if value="${use_collision}">
         <!-- ranger_envelope is the whole-vehicle bounding box, wheels
              included, so its underside sits at base_link z=-0.3819: 5.5 cm

@@ -52,7 +52,7 @@ class Ranger4WIS(Node):
     def __init__(self):
         super().__init__('ranger_4wis_controller')
 
-        self.declare_parameter('wheel_radius', 0.1026)
+        self.declare_parameter('wheel_radius', 0.100036)
         self.declare_parameter('half_wheelbase', 0.2470)
         self.declare_parameter('half_track', 0.1852)
         self.declare_parameter('max_wheel_speed', 25.0)
