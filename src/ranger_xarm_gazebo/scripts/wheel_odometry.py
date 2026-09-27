@@ -72,14 +72,16 @@ class WheelOdometry(Node):
         self.declare_parameter('half_track', 0.1852)
 
         self.declare_parameter('odom_frame', 'odom')
-        # base_link, not base_footprint. The description's base_footprint
-        # is commented out, while ranger_xarm_bringup's EKF config names
-        # base_footprint as its base_link_frame. On hardware the Ranger
-        # driver supplies that frame; in simulation nothing does, and
-        # publishing a TF to a frame outside the robot's tree would
-        # disconnect it. They differ only in z, so planar odometry is the
-        # same either way.
-        self.declare_parameter('child_frame', 'base_link')
+        # base_footprint, matching ranger_xarm_bringup's EKF config. The
+        # two frames differ only in z, so planar dead reckoning is the
+        # same either way, but the estimator localises base_footprint and
+        # a comparison is easier to trust when both sides name the same
+        # thing.
+        self.declare_parameter('child_frame', 'base_footprint')
+        # Turn this OFF whenever the EKF is running. The EKF is
+        # configured with publish_tf: true and owns odom -> base_footprint;
+        # two publishers on one edge is not an error anyone reports, it
+        # just makes TF return whichever arrived last.
         self.declare_parameter('publish_tf', True)
         self.declare_parameter('odom_topic', 'odom')
 
