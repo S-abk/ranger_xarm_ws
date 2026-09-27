@@ -618,17 +618,44 @@ Isaac check and removes the real crab scrub, which was the only reason
 it was pinned off; both simulators now run the same controller
 configuration.
 
-### Still open: `low_friction`, and the stop at the end of the arc
+### Fixed: `low_friction`, by limiting wheel acceleration
 
-`low_friction` is now the one surface where the velocity drive trails
-the effort drive clearly: wheel odometry and EKF both 0.75 - 0.79 %
-against the effort drive's EKF 0.08 %, with a very consistent -0.9 deg
-wheel-odometry heading error. The leading candidate is the same thing
-behind the arc's constant -0.6 deg on flat ground that no gate setting
-changed: the stiff velocity drive stops the wheels instantly at the end
-of a segment while the base's inertia carries it on, so it skids, and
-more so at mu 0.25. The effort drive's soft ramp hid that. Untested;
-the test is a wheel acceleration limit in velocity mode.
+The candidate was right. A velocity drive is stiff, so it started and
+stopped the wheels instantly and the base's inertia skidded the tyres at
+every segment boundary, worst on low grip. Per-segment heading on
+`low_friction`:
+
+| | arc (incl. its stop) | crab | total |
+| --- | --- | --- | --- |
+| no limit | -1.15 deg | +0.23 | -0.92 |
+| limit 1.0 m/s^2 | **+0.07** | +0.24 | +0.30 |
+
+`max_wheel_accel` (m/s at the tyre per second; default 1.0, 0
+disables) limits how fast the commanded wheel speeds may change. It is
+applied to the four wheels as a set, by one common factor, so a ramp
+keeps the inner/outer speed ratio and stays consistent with one body
+twist -- the same lesson as the common gate. The default sits below the
+skid threshold mu*g of every world: 2.45 m/s^2 at mu 0.25, 1.47 on the
+mu 0.15 patches.
+
+`low_friction`, five trials, gz:
+
+| | wheel odom | EKF |
+| --- | --- | --- |
+| effort drive | 0.42 - 0.45 % | 0.08 - 0.09 % |
+| velocity, common gate | 0.75 - 0.79 % | 0.75 - 0.79 % |
+| velocity, common gate, 1.0 m/s^2 | **0.20 - 0.22 %** | **0.06 %** |
+
+The velocity drive now beats the effort drive on the surface where it
+was clearly worst. The crab's +0.24 deg is a separate small residual.
+
+**Not yet rerun with the limit:** `empty_ground`, `mixed_surface` and
+`rough_ground` in gz, where it is now the default, and Isaac, where it is
+pinned off (`max_wheel_accel: 0.0` in
+`ranger_xarm_isaac/launch/control.launch.py`) until it has been measured
+there. It changes only transitions -- ramps take about 0.35 s at the
+scored speeds -- so steady-state tracking should be unaffected, but that
+is an expectation, not a result.
 
 Also found while testing: `steer_gate_power:=3` on the command line
 crashed the node, because rclpy rejected the integer for a parameter

@@ -81,6 +81,18 @@ class Ranger4WIS(Node):
         # common: gate all wheels on the worst knuckle. per_wheel: each on
         # its own, which is what produced the crab-transition slip.
         self.declare_parameter('steer_gate_mode', 'common')
+        # Velocity mode only: the most the wheel speeds may change per
+        # second, in m/s at the tyre. A velocity drive is stiff, so without
+        # a limit it starts and stops the wheels instantly; the base's
+        # inertia then skids the tyres at every segment boundary, worst on
+        # low grip, and wheel odometry cannot see the skid. A base skids
+        # once it brakes harder than mu*g -- 2.45 m/s^2 at mu 0.25, 1.47 on
+        # the mu 0.15 patches -- so the default sits below both. The four
+        # wheels are limited together, by one common factor, so a ramp
+        # keeps the inner/outer speed ratio and stays consistent with one
+        # body twist. 0 disables.
+        self.declare_parameter('max_wheel_accel', 1.0,
+                               ParameterDescriptor(dynamic_typing=True))
         # 'effort' closes the speed loop here and sends torque. 'velocity'
         # sends the wheel speed straight through to a simulator whose joint
         # velocity drive is a torque-limited actuator, which then closes the
@@ -110,6 +122,8 @@ class Ranger4WIS(Node):
         self.max_eff = self.get_parameter('max_wheel_effort').value
         self.gate_power = float(self.get_parameter('steer_gate_power').value)
         self.gate_mode = self.get_parameter('steer_gate_mode').value
+        self.max_accel = float(self.get_parameter('max_wheel_accel').value)
+        self.last_cmd_speeds = [0.0] * len(CORNERS)
         if self.gate_mode not in ('common', 'per_wheel'):
             raise ValueError(f"steer_gate_mode must be common or per_wheel, got {self.gate_mode}")
         self.mode = self.get_parameter('command_mode').value
@@ -158,7 +172,8 @@ class Ranger4WIS(Node):
 
         self.get_logger().info(
             f'4WIS ready ({self.mode}'
-            + (f', steer gate {self.gate_mode} power {self.gate_power:g}' if self.mode == 'velocity' else '')
+            + (f', steer gate {self.gate_mode} power {self.gate_power:g}, '
+               f'wheel accel {self.max_accel:g} m/s^2' if self.mode == 'velocity' else '')
             + f'): r={self.r} half_wheelbase={lx} half_track={ly}')
 
     def _on_cmd(self, msg):
@@ -207,6 +222,19 @@ class Ranger4WIS(Node):
             g = min(factors)
             return [w * g for w in speeds]
         return [w * f for w, f in zip(speeds, factors)]
+
+    def _limit_accel(self, speeds):
+        """Rate-limit the wheel set as a whole (see max_wheel_accel)."""
+        if self.max_accel <= 0.0:
+            self.last_cmd_speeds = list(speeds)
+            return speeds
+        step = self.max_accel * self.dt / self.r      # rad/s per tick
+        deltas = [w - p for w, p in zip(speeds, self.last_cmd_speeds)]
+        worst = max(abs(d) for d in deltas)
+        k = 1.0 if worst <= step else step / worst
+        out = [p + k * d for p, d in zip(self.last_cmd_speeds, deltas)]
+        self.last_cmd_speeds = out
+        return out
 
     def _tick(self):
         age = (self.get_clock().now() - self.last_cmd_time).nanoseconds * 1e-9
@@ -259,6 +287,7 @@ class Ranger4WIS(Node):
 
         if self.mode == 'velocity':
             speeds = self._gate(steers, speeds)
+            speeds = self._limit_accel(speeds)
 
         self.steer_pub.publish(Float64MultiArray(data=steers))
         self.wheel_pub.publish(Float64MultiArray(data=speeds))
