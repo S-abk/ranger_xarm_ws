@@ -6,7 +6,7 @@ Reproduces the scored drive's lead-up (arc, stop, crab, stop) through
 /cmd_vel with the real 4WIS node, and logs heading from /odom and from
 ground truth alongside the measured knuckle angles and wheel rates. It
 then splits the crab into the knuckle sweep (until all four are within
-1 deg of 90) and the steady part, and says how much heading error each
+1 deg of +/-90; with shortest-path steering the rears finish at -90) and the steady part, and says how much heading error each
 contributed.
 
 gz resets the pose first; in Isaac the reset call simply fails and the
@@ -96,7 +96,7 @@ def main():
 
     def at(tt):
         return min(rows, key=lambda r: abs(r['t'] - tt))
-    swept = next((r['t'] for r in rows if r['t'] >= tc and all(abs(a - 90) < 1.0 for a in r['st'])), te)
+    swept = next((r['t'] for r in rows if r['t'] >= tc and all(abs(abs(a) - 90) < 1.0 for a in r['st'])), te)
 
     print(f'{"t":>5s}  {"odom yaw":>8s} {"truth":>7s} {"err":>6s}   knuckles FL FR RL RR (deg)'
           f'        wheel speed FL FR RL RR (m/s)')
