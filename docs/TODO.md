@@ -573,16 +573,62 @@ That explains every row of the earlier cross-simulator table, including
 why the gate "made Isaac worse": it reduced Isaac's real scrub but left
 the wheels' implied yaw in place.
 
-### The fix to try
+### Fixed: gate all four wheels on the worst knuckle
 
-Gate all four wheels on the WORST knuckle's error rather than each on
-its own, so no wheel drives until every knuckle has nearly converged and
-they then ramp together; the wheel set stays consistent with one body
-twist throughout. Optionally, pick each knuckle's shorter way round (the
-rear knuckles can reach -90 deg with the wheel reversed, a 66-75 deg
-swing instead of 105-114), which makes the sweeps symmetric and shorter.
-The prediction is that sweep yaw goes to ~0 in both odometry and truth,
-in both simulators. Then re-score, and re-judge the gate in Isaac.
+`steer_gate_mode: common` (the default; `per_wheel` stays selectable)
+scales every wheel by the same factor, taken from the knuckle furthest
+from its target, so none drives until all have nearly converged and
+they ramp together. The sweep into the crab, `crab_timeline.py`:
+
+| | sweep: odom / truth / error |
+| --- | --- |
+| gz, gate off | +1.85 / +0.36 / +1.49 deg |
+| gz, per-wheel gate | +1.86 / +1.84 / +0.03 |
+| gz, common gate | **+0.07 / +0.25 - +0.31 / -0.17 - -0.24** |
+| Isaac, per-wheel gate | +1.35 / +0.22 / +1.13 |
+| Isaac, common gate | **+0.00 - -0.01 / -0.00 - -0.01 / +0.01** |
+
+The implied yaw is gone in both simulators, and so is almost all of the
+real unwanted yaw: the base now stays straight through the transition
+instead of turning up to 1.8 deg.
+
+gz four-surface sweep, velocity drive, five trials each, all healthy:
+
+| surface | effort | per-wheel gate | common gate |
+| --- | --- | --- | --- |
+| `empty_ground` wheel / EKF | 0.10 / 0.09 - 0.14 % | 0.06 - 0.18 / 0.16 - 0.19 % | 0.14 - 0.15 / 0.23 - 0.24 % |
+| `low_friction` | 0.42 - 0.45 / 0.08 - 0.09 % | 0.44 - 0.46 / 0.68 - 0.69 % | 0.75 - 0.79 / 0.75 - 0.79 % |
+| `mixed_surface` | 1 of 5 failed | 2 of 5 failed | 1 of 5 failed; the rest 1.8 / 0.8 % |
+| `rough_ground` | 22.9 - 47.0 / 12.2 - 27.8 % | 0.72 - 9.19 / 0.85 - 1.87 % | 2.0 - 5.3 / 1.3 - 2.1 % |
+
+Isaac, same USD and starts as the earlier gate tests:
+
+| | gate off | per-wheel gate | common gate |
+| --- | --- | --- | --- |
+| flat, wheel / EKF | 0.20 - 0.40 / 0.22 - 0.30 % | 1.24 - 1.35 / 0.32 - 0.62 % | 0.17 - 0.25 / 0.23 - 0.29 % |
+| rough trial 1 (origin) | 3.98 / 1.94 % | 3.73 / 0.94 % | 2.57 / 1.49 % |
+| rough trial 2 | 1.00 / 0.65 % | 0.70 / 0.63 % | 0.82 / 0.72 % |
+
+(The gate-off rough pair is from the earlier session: at power 0 the
+gate returns the speeds untouched, and the USD, world and start are the
+same.)
+
+**Isaac now runs the gate too.** It is at least as good as off on every
+Isaac check and removes the real crab scrub, which was the only reason
+it was pinned off; both simulators now run the same controller
+configuration.
+
+### Still open: `low_friction`, and the stop at the end of the arc
+
+`low_friction` is now the one surface where the velocity drive trails
+the effort drive clearly: wheel odometry and EKF both 0.75 - 0.79 %
+against the effort drive's EKF 0.08 %, with a very consistent -0.9 deg
+wheel-odometry heading error. The leading candidate is the same thing
+behind the arc's constant -0.6 deg on flat ground that no gate setting
+changed: the stiff velocity drive stops the wheels instantly at the end
+of a segment while the base's inertia carries it on, so it skids, and
+more so at mu 0.25. The effort drive's soft ramp hid that. Untested;
+the test is a wheel acceleration limit in velocity mode.
 
 Also found while testing: `steer_gate_power:=3` on the command line
 crashed the node, because rclpy rejected the integer for a parameter

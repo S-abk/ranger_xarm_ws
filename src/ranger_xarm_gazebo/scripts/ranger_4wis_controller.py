@@ -78,6 +78,9 @@ class Ranger4WIS(Node):
         # without it rclpy rejects the integer and the node exits.
         self.declare_parameter('steer_gate_power', 3.0,
                                ParameterDescriptor(dynamic_typing=True))
+        # common: gate all wheels on the worst knuckle. per_wheel: each on
+        # its own, which is what produced the crab-transition slip.
+        self.declare_parameter('steer_gate_mode', 'common')
         # 'effort' closes the speed loop here and sends torque. 'velocity'
         # sends the wheel speed straight through to a simulator whose joint
         # velocity drive is a torque-limited actuator, which then closes the
@@ -106,6 +109,9 @@ class Ranger4WIS(Node):
         self.ki = self.get_parameter('wheel_ki').value
         self.max_eff = self.get_parameter('max_wheel_effort').value
         self.gate_power = float(self.get_parameter('steer_gate_power').value)
+        self.gate_mode = self.get_parameter('steer_gate_mode').value
+        if self.gate_mode not in ('common', 'per_wheel'):
+            raise ValueError(f"steer_gate_mode must be common or per_wheel, got {self.gate_mode}")
         self.mode = self.get_parameter('command_mode').value
         if self.mode not in ('effort', 'velocity'):
             raise ValueError(f"command_mode must be effort or velocity, got {self.mode}")
@@ -152,7 +158,7 @@ class Ranger4WIS(Node):
 
         self.get_logger().info(
             f'4WIS ready ({self.mode}'
-            + (f', steer gate power {self.gate_power:g}' if self.mode == 'velocity' else '')
+            + (f', steer gate {self.gate_mode} power {self.gate_power:g}' if self.mode == 'velocity' else '')
             + f'): r={self.r} half_wheelbase={lx} half_track={ly}')
 
     def _on_cmd(self, msg):
@@ -179,6 +185,28 @@ class Ranger4WIS(Node):
             self.get_logger().warn(
                 'no wheel velocity on /dynamic_joint_states; the speed loop '
                 'is running open loop and the base will not brake')
+
+    def _gate(self, steers, speeds):
+        """Scale velocity-mode wheel speeds by knuckle convergence.
+
+        'common' gates all four wheels on the WORST knuckle, so none drives
+        until every knuckle has nearly converged and they then ramp
+        together; the wheel set stays consistent with one body twist.
+        'per_wheel' gates each wheel on its own knuckle, which lets the
+        front wheels (shorter swing into a crab) push while the rears are
+        still turning: the wheels' motion then implies 1.4-1.9 deg of yaw
+        that the base only partly follows, and wheel odometry integrates
+        the part it does not as error. Measured in both simulators; see
+        crab_timeline.py and docs/TODO.md.
+        """
+        if self.gate_power <= 0.0 or any(self.steer_pos[c] is None for c in CORNERS):
+            return speeds
+        factors = [_gate_factor(a, self.steer_pos[c], self.gate_power)
+                   for a, c in zip(steers, CORNERS)]
+        if self.gate_mode == 'common':
+            g = min(factors)
+            return [w * g for w in speeds]
+        return [w * f for w, f in zip(speeds, factors)]
 
     def _tick(self):
         age = (self.get_clock().now() - self.last_cmd_time).nanoseconds * 1e-9
@@ -213,11 +241,7 @@ class Ranger4WIS(Node):
             steers.append(angle)
 
             if self.mode == 'velocity':
-                measured = self.steer_pos[c]
-                if self.gate_power > 0.0 and measured is not None:
-                    gate = max(0.0, math.cos(angle - measured)) ** self.gate_power
-                    omega *= gate
-                speeds.append(omega)
+                speeds.append(omega)      # gated below, once every angle is known
                 continue
 
             # PI on wheel speed -> torque. The integral is what holds a
@@ -233,8 +257,15 @@ class Ranger4WIS(Node):
             effort = self.kp * err + self.integral[c]
             speeds.append(max(-self.max_eff, min(self.max_eff, effort)))
 
+        if self.mode == 'velocity':
+            speeds = self._gate(steers, speeds)
+
         self.steer_pub.publish(Float64MultiArray(data=steers))
         self.wheel_pub.publish(Float64MultiArray(data=speeds))
+
+
+def _gate_factor(target, measured, power):
+    return max(0.0, math.cos(target - measured)) ** power
 
 
 def main():
