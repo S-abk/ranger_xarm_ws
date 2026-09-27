@@ -10,6 +10,7 @@ install(PROGRAMS
   scripts/ranger_4wis_controller.py
   scripts/wheel_odometry.py
   scripts/gz_clock_relay.py
+  scripts/arc_probe.py
   scripts/make_surface_worlds.py
   scripts/run_surface_sweep.sh
   scripts/reset_pose.sh

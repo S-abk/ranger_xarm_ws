@@ -222,8 +222,9 @@ bumps.
 
 **These numbers are not directly comparable with the pre-fix ones.** The
 clock fix changed how the robot drives, not only how it is measured:
-`ranger_4wis_controller.py`'s PI wheel-speed loop runs on the ROS clock,
-so while it lagged, the integrator's dt was 2-4x too small. On rough
+`ranger_4wis_controller.py`'s PI wheel-speed loop ticks on a 10 ms ROS
+timer with a fixed dt, so while the clock lagged it ran 2-4x less often
+per simulated second. On rough
 ground the base now consistently turns about 66 deg over a drive that
 turns 138 deg on the flat, where before the net heading varied widely
 between trials.
@@ -320,26 +321,80 @@ domes (0.4 %). `rough_rounded.sdf` stays in the tree as a same-grid,
 edgeless variant. Eliminated as causes of the gz/Isaac gap: geometry and
 collider, Isaac wheel friction, Isaac timestep, PhysX contact offset.
 
-## Open: gz under-rotates in arcs on rough ground; Isaac does not
+## Diagnosed: gz under-rotates in arcs because its wheel speed loop is too soft
 
-With the measurement chain fixed, the remaining gz/Isaac gap is visible
-directly in ground truth rather than inferred from wheel odometry. On
-`rough_ground` the gz base turns about 66 deg over a drive that turns
-138 deg on the flat, and wheel odometry, which reads steer angles and
-wheel travel, believes it turned the full amount -- hence its +52 to +68
-deg heading errors. Isaac on the same bumps turns 131-134 deg.
+**Probe:** `arc_probe.py` drives 6 s straight onto the terrain, then holds
+the scored arc (vx 0.30 m/s, wz 0.40 rad/s) and logs, per corner, target
+against actual wheel speed and steer angle, wheel effort against the
+30 N m clamp, a rigid-body fit of the four wheel velocities, and
+ground-truth yaw rate -- which is frame-independent, unlike planar twist.
 
-So in gz the wheels roll and steer as commanded but the base does not
-follow the arc: it scrubs. The leading candidate is still the drive: the
-gz PI speed loop (`wheel_kp` 1.5, `wheel_ki` 4.0, `max_wheel_effort` 30)
-against Isaac's exact velocity drive, with inner and outer wheels needing
-different speeds in an arc. Test: log commanded against actual wheel
-speed per corner, and `wheel_odometry`'s least-squares residual, through
-an arc on rough ground.
+Flat ground is the control and is exact: every wheel on target, efforts
+about 0.2 N m, fit residual 0.0000 m/s, yaw rate 100 % of command, 137.6
+deg over a 137.5 deg arc.
 
-The Isaac EKF scores in `ranger_xarm_isaac/README.md` were taken with the
-old differencing twist. Isaac's clock is its own and did not lag, so they
-are probably close, but they have not been re-run.
+On `rough_ground`, three runs, all within a degree of each other:
+
+| | result |
+| --- | --- |
+| steer angles | exactly on target at every corner |
+| wheel efforts | 0.6 - 8.5 N m mean, at the 30 N m clamp 0 % of the time |
+| wheel speeds | -27 % to +4 % against target |
+| wheel rigid-body fit residual | 0.085 - 0.095 m/s (four wheels disagree) |
+| yaw rate implied by the wheels | 0.356 - 0.371 rad/s |
+| ground-truth yaw rate | **0.236 - 0.237 rad/s, 59 % of command** |
+| heading over the arc | 82 - 84 deg against 137.5 |
+
+So the knuckles are not being knocked off angle, and the drive is not
+torque-limited -- it has 20+ N m of headroom it never uses. The wheels
+simply miss their speeds under bump loads, stop agreeing on one body
+motion, fight, and the base scrubs.
+
+Whether that is cause or symptom was settled by stiffening only the
+speed loop (`wheel_kp`, `wheel_ki` scaled together) on the live sim:
+
+| gains | ground-truth yaw rate | heading over the arc | efforts at clamp |
+| --- | --- | --- | --- |
+| 1x (stock: kp 1.5, ki 4.0) | 59 % | 83 deg | 0 % |
+| 3x | 91 % | 123 deg | 32 - 44 % |
+| 5x | 98 % | 132 deg | 32 - 46 % |
+| 10x | 101 - 105 % | 132 - 141 deg | 42 - 56 % |
+
+Rotation tracks drive stiffness monotonically and reaches the full turn,
+so **the cause is the drive, not the contact**: the bumps deliver the arc
+once the wheels hold their speeds. This is the gz/Isaac rough-ground gap.
+Isaac's velocity drive (damping 1e3) is effectively a stiff speed source
+and never had the problem.
+
+### The stiffened loops are not a fix
+
+From 3x upwards the loop chatters: efforts sit at the clamp a third to
+half the time with means near zero, and the fit residual rises to
+0.43 - 0.53 m/s. The wheels reach their target speeds only on average.
+The loop closes over DDS -- speed feedback from `/dynamic_joint_states`,
+effort out through a topic, a 10 ms timer -- and the latency that adds
+limits how stiff it can be. Whether the chatter is inherent to that
+latency or excited by the bumps has not been tested (it would show up on
+flat ground at 5x if inherent).
+
+### The fix to try: a velocity drive in gz, as in Isaac
+
+gz drives the wheels by torque because under bullet-featherstone a
+velocity command became a rigid motor constraint that over-determined the
+chassis and stopped it yawing (see the effort comment in
+`ranger_wheels.xacro`). The project has since moved to dartsim for exactly
+that class of problem, and that comment still reasons from bullet. On
+dartsim a joint velocity command with the URDF effort limit behaves as a
+torque-limited speed source, which is what Isaac uses and what the
+real platform's motor controllers do.
+
+The pieces exist, but only on the isaac branch: the xacro's
+`wheels_command_interface` argument, and a `command_mode` (effort or
+velocity) in that branch's `ranger_4wis_controller.py`. The public
+branch has neither, so the two copies of the controller have diverged
+and should be reconciled first. Then verify on dartsim that a commanded
+spin in place produces its full yaw -- the exact failure the xacro
+comment describes -- before rerunning the arc probe and the sweep.
 
 ### Environment faults (still stand)
 
