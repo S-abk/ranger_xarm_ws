@@ -114,6 +114,8 @@ class WheelOdometry(Node):
         self.last_stamp = None
         self.residual = 0.0
         self.n_nonfinite = 0
+        self.n_repeated_stamps = 0
+        self.pending = [0.0, 0.0, 0.0]
 
         self.pub = self.create_publisher(
             Odometry, self.get_parameter('odom_topic').value, 10)
@@ -137,10 +139,11 @@ class WheelOdometry(Node):
     def _on_joints(self, msg):
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
-        steer, travel = {}, {}
+        steer, travel, rate = {}, {}, {}
         for c in CORNERS:
             a = self._iface(msg, f'{c}_steer_joint', 'position')
             w = self._iface(msg, f'{c}_wheel_joint', 'position')
+            rate[c] = self._iface(msg, f'{c}_wheel_joint', 'velocity')
             if a is None or w is None:
                 return
             # PhysX can emit a non-finite joint value for a frame or two
@@ -169,13 +172,16 @@ class WheelOdometry(Node):
                     d += 2.0 * math.pi
                 travel[c] = d
 
-        if self.last_stamp is None:
+        # Pose integration needs no dt: it is a sum of wheel travel. Only
+        # the twist divides by the stamp interval. This used to return early
+        # on dt <= 0 AFTER last_wheel had already been advanced above, so a
+        # message whose stamp repeated the previous one silently discarded
+        # its wheel travel. Repeats happen whenever the ROS clock is coarser
+        # than the joint-state rate, so integrate always and skip only the
+        # twist.
+        dt = None if self.last_stamp is None else stamp - self.last_stamp
+        if dt is None or dt > 0.0:
             self.last_stamp = stamp
-            return
-        dt = stamp - self.last_stamp
-        self.last_stamp = stamp
-        if dt <= 0.0:
-            return
 
         # Per-wheel contact displacement, then least squares for the body
         # twist. Working in displacement rather than velocity keeps this
@@ -206,7 +212,40 @@ class WheelOdometry(Node):
         self.y += dx_b * math.sin(mid) + dy_b * math.cos(mid)
         self.yaw = math.atan2(math.sin(self.yaw + dyaw), math.cos(self.yaw + dyaw))
 
-        self._publish(msg.header.stamp, dx_b / dt, dy_b / dt, dyaw / dt)
+        # Twist from the wheel VELOCITY interface when there is one, through
+        # the same least squares as the pose. That needs no dt and so no
+        # clock. Differencing positions against header stamps -- the
+        # fallback below -- is only as good as the clock that stamped them:
+        # in gz the bridged /clock once ran 2-4x slow and inflated this
+        # twist by that factor, and even with it fixed, 150 Hz joint states
+        # carrying stamps from a 250 Hz clock record each ~7 ms interval as
+        # 4 or 8 ms, and averaging travel/dt over that jitter reads 23-35 %
+        # high. The EKF fuses only this twist, so the bias went straight
+        # into the filter.
+        if all(v is not None and math.isfinite(v) for v in rate.values()):
+            bv = []
+            for c in CORNERS:
+                u = rate[c] * self.r
+                bv.append(u * math.cos(steer[c]))
+                bv.append(u * math.sin(steer[c]))
+            vx, vy, wz = self.A_pinv @ np.array(bv)
+            self.pending = [0.0, 0.0, 0.0]
+            self._publish(msg.header.stamp, vx, vy, wz)
+            return
+
+        # The twist covers everything travelled since the last published
+        # one, so a repeated stamp's travel -- already in the pose -- is
+        # carried into the next interval instead of vanishing from the
+        # velocity estimate or being divided by zero.
+        self.pending[0] += dx_b
+        self.pending[1] += dy_b
+        self.pending[2] += dyaw
+        if dt is not None and dt > 0.0:
+            px, py, pyaw = self.pending
+            self.pending = [0.0, 0.0, 0.0]
+            self._publish(msg.header.stamp, px / dt, py / dt, pyaw / dt)
+        elif dt is not None:
+            self.n_repeated_stamps += 1
 
     def _warn_nonfinite(self, where):
         self.n_nonfinite += 1

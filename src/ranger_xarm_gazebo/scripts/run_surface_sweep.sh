@@ -32,10 +32,20 @@ for i in $(seq 1 $N); do
 done
 
 pkill -f "ekf_odom_imu.launch"; pkill -f "sim.launch.py"; sleep 3
-pkill -9 -f "sim.launch.py"; pkill -9 -f "gz sim"
-pkill -9 -f "/opt/ros/jazzy/lib/ros_gz_bridge/parameter_bridge"
-pkill -9 -f "/opt/ros/jazzy/lib/robot_state_publisher/robot_state_publisher"
-pkill -9 -f "ekf_node"; pkill -9 -f "wheel_odometry.py"
-pkill -9 -f "ranger_4wis_controller.py"; pkill -9 -f "imu_yaw_bias_corrector.py"
+for pat in "sim.launch.py" "gz sim" "parameter_bridge" "robot_state_publisher" \
+           "static_transform_publisher" "gz_clock_relay.py" "ekf_node" \
+           "wheel_odometry.py" "ranger_4wis_controller.py" \
+           "imu_yaw_bias_corrector.py"; do
+  pkill -9 -f "$pat"
+done
 sleep 5
-echo "teardown: $(ps -eo comm= | grep -cE '^(gz|robot_state_pub|parameter_brid|ekf_node)$') sim procs left"
+# Every kill -9 leaves a Fast DDS shared-memory segment behind, and stale
+# ones serve ghost endpoints to the next run -- once, a controller_manager
+# that answered for a controller the live one had never loaded.
+rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_* 2>/dev/null
+# Count by command line, not process name: the gz server's comm is "ruby",
+# so a check for a process called gz reports zero while one is running --
+# which is how a stale server once survived teardown for hours.
+left=$(pgrep -f "gz sim|robot_state_publisher|parameter_bridge|ekf_node|gz_clock_relay" \
+       | grep -vx "$$" | wc -l)
+echo "teardown: $left sim procs left"

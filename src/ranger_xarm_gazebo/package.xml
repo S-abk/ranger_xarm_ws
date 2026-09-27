@@ -21,6 +21,11 @@
 
   <exec_depend>ros_gz_sim</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
+  <!-- gz_clock_relay.py also needs the gz-transport Python bindings
+       (apt: python3-gz-transport13). There is no rosdep key for them, so
+       they cannot be declared here without breaking rosdep install; the gz
+       Harmonic install provides them, and the script exits with that
+       package name if they are missing. -->
   <exec_depend>gz_ros2_control</exec_depend>
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
