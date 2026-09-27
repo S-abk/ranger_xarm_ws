@@ -710,9 +710,42 @@ Full scored drive on `low_friction`: crab segment +0.24 -> +0.12 deg,
 drive total +0.30 -> +0.18 deg. A sharper gate cuts the residual three-
 to fourfold. The cost is a slower start into any steered transition --
 the wheels reach speed about 0.1 s later -- and power 10 also slows arc
-entries (a 24 deg steer change gates to 0.40 instead of 0.76). It is
-**not** the default: it would need the four-surface sweep and the Isaac
-checks rerun first.
+entries (a 24 deg steer change gates to 0.40 instead of 0.76).
+
+**Power 10 is now the default**, after rerunning the sweeps:
+
+| gz, five trials | power 3 (wheel / EKF) | power 10 |
+| --- | --- | --- |
+| `empty_ground` | 0.23 - 0.25 / 0.05 - 0.06 % | **0.13 / 0.04 - 0.05 %** |
+| `low_friction` | 0.20 - 0.22 / 0.06 % | **0.11 - 0.12 / 0.04 - 0.06 %** |
+| `mixed_surface` | 0 of 5 failed, 2.7 - 2.9 / 0.50 - 1.14 % | 0 of 5 failed, **1.0 - 2.7 / 0.14 - 0.80 %** |
+| `rough_ground` | 2.4 - 7.2 / 0.86 - 1.86 % (EKF mean 1.38) | 1.9 - 9.5 / 1.19 - 2.20 % (EKF mean 1.96) |
+
+| Isaac | power 3 | power 10 |
+| --- | --- | --- |
+| flat, wheel / EKF | 0.08 - 0.12 / 0.15 - 0.47 % | 0.08 - 0.11 / 0.12 - 0.45 % |
+| rough trial 1 (origin) | 2.99 / 1.59 % | 2.84 / 1.31 % |
+| rough trial 2 | 0.70 / 0.77 % | 0.69 / 0.80 % |
+
+Better on the three smoother surfaces, the same in Isaac. `rough_ground`
+in gz is marginally worse on the mean, and that is probably noise rather
+than the gate:
+
+- The obvious mechanism is ruled out. `arc_probe.py` on rough ground at
+  power 10 shows the steady arc exact -- every wheel on target, fit
+  residual 0.0005 m/s, yaw rate 98 %, 138 deg of 137.5 -- so bump-jolted
+  knuckles are not making the gate throttle the wheels mid-arc.
+- Rough-ground trials diverge from identical starts. The first Isaac
+  power-10 session scored 10.05 % / 3.04 % from the origin with the base
+  turning only 119.5 deg; a fresh session from the same origin scored
+  2.84 % / 1.31 % and turned 130.5 deg, matching power 3. The two worst
+  gz power-10 trials are likewise the ones where the base diverged to
+  ~126 deg, and power 3 had one of those too.
+
+**Method note.** Single rough-ground trials can differ by 11 deg of net
+heading from an identical start, in Isaac as well as gz. One pair of
+trials cannot separate settings on rough ground; a regression seen there
+should be repeated from a fresh session before it is believed.
 
 **Shortest-path steering was tried and rejected.** Letting each knuckle
 reach +/-90 from whichever side is nearer (the rears go to -90 with the

@@ -73,10 +73,15 @@ class Ranger4WIS(Node):
         # transition into the crab. Power 1 is ordinary cosine compensation,
         # which still lets a wheel 45 deg off target drive at 70 %; measured,
         # it cut that crab error only to +0.79 deg. Power 3 cut it to
-        # +0.11 deg. 0 disables the gate.
+        # +0.11 deg, but with the common gate it still let the wheels drive
+        # at 76 % while the rear knuckles, which swing further into a crab,
+        # were 24 deg off: the base turned +0.21 deg per crab on flat
+        # ground. Power 10 (40 % at 24 deg) cut that to +0.07, at the cost
+        # of reaching speed about 0.1 s later in any steered transition.
+        # 0 disables the gate.
         # dynamic_typing so steer_gate_power:=3 works as well as :=3.0;
         # without it rclpy rejects the integer and the node exits.
-        self.declare_parameter('steer_gate_power', 3.0,
+        self.declare_parameter('steer_gate_power', 10.0,
                                ParameterDescriptor(dynamic_typing=True))
         # common: gate all wheels on the worst knuckle. per_wheel: each on
         # its own, which is what produced the crab-transition slip.
