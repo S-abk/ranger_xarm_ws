@@ -60,6 +60,12 @@
   <xacro:arg name="use_wheels" default="false"/>
   <xacro:arg name="fix_base_to_world" default="true"/>
   <xacro:arg name="wheels_ros2_control_plugin" default="gz_ros2_control/GazeboSimSystem"/>
+  <!-- How ros2_control commands the wheel joints. effort: torque, with the
+       speed loop closed in ranger_4wis_controller.py. velocity: wheel speed,
+       closed by the simulator's own torque-limited joint drive, as Isaac
+       does and as dartsim can. See ranger_wheels.xacro for why gz used
+       effort. -->
+  <xacro:arg name="wheels_command_interface" default="effort"/>
 
   <xacro:arg name="use_laptop_collision" default="true"/>
   <xacro:arg name="laptop_width" default="0.36"/><xacro:arg name="laptop_depth" default="0.25"/>
@@ -90,7 +96,8 @@
   <xacro:if value="$(arg use_wheels)">
     <xacro:ranger_wheels parent="base_link" ground_z="${ground_z_nom}"/>
     <xacro:ranger_wheels_ros2_control name="ranger_base"
-      plugin="$(arg wheels_ros2_control_plugin)"/>
+      plugin="$(arg wheels_ros2_control_plugin)"
+      wheel_command="$(arg wheels_command_interface)"/>
   </xacro:if>
 
   <!-- Ground-projection reference, and the ROOT of the robot.

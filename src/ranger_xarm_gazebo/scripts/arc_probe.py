@@ -126,8 +126,13 @@ def yaw(q):
 
 
 def main():
+    # arc_probe.py [label] [lead_in_s] [vx vy wz]  -- defaults to the scored
+    # arc; '0 0 0.5' with lead_in 0 is a spin in place on the spawn square.
+    global ARC
     label = sys.argv[1] if len(sys.argv) > 1 else 'arc'
     lead_in = float(sys.argv[2]) if len(sys.argv) > 2 else 6.0
+    if len(sys.argv) > 5:
+        ARC = tuple(float(v) for v in sys.argv[3:6])
     subprocess.run(
         ['gz', 'service', '-s', '/world/empty_ground/set_pose',
          '--reqtype', 'gz.msgs.Pose', '--reptype', 'gz.msgs.Boolean',
@@ -141,7 +146,8 @@ def main():
     while (n.gt is None or n.js is None) and time.time() - t0 < 30:
         rclpy.spin_once(n, timeout_sec=0.1)
     n.hold(0, 0, 0, 2.0)                       # settle after the reset
-    n.hold(0.35, 0, 0, lead_in)                # straight, onto the terrain
+    if lead_in > 0:
+        n.hold(0.35, 0, 0, lead_in)            # straight, onto the terrain
     p = n.gt.pose.pose.position
     y0 = yaw(n.gt.pose.pose.orientation)
     n.hold(*ARC, 1.0)                          # let the steering arrive
@@ -159,7 +165,7 @@ def main():
     print(f'--- {label}: arc started at x={p.x:+.2f} y={p.y:+.2f}, '
           f'{len(rows)} samples over {arc_t:.1f} s sim ---')
     print(f"{'corner':12s} {'speed tgt':>9s} {'actual':>8s} {'err':>7s} "
-          f"{'steer tgt':>9s} {'actual':>8s} {'effort':>7s} {'at clamp':>8s}")
+          f"{'steer tgt':>9s} {'actual':>8s} {'cmd out':>7s} {'at clamp':>8s}")
     for i, c in enumerate(CORNERS):
         sp = [r['rate'][c] * R for r in rows]
         st = [math.degrees(r['steer'][c]) for r in rows]
@@ -169,10 +175,12 @@ def main():
               f'{100 * (statistics.mean(sp) - tgt[c][0]) / tgt[c][0]:+6.0f}% '
               f'{math.degrees(tgt[c][1]):+9.1f} {statistics.mean(st):+8.1f} '
               f'{statistics.mean(ef):+7.2f} {100 * clamp:7.0f}%')
+    print("  cmd out: wheel effort in N m under the effort drive, wheel rate in rad/s\n"
+          "  under the velocity drive; 'at clamp' is meaningful for effort only")
     wzw = statistics.mean(r['wz_wheels'] for r in rows)
     wzt = statistics.mean(r['wz_truth'] for r in rows)
     res = statistics.mean(r['resid'] for r in rows)
-    print(f'yaw rate  commanded {ARC[2]:+.3f} | wheels imply {wzw:+.3f} | '
+    print(f'twist {ARC} | yaw rate commanded {ARC[2]:+.3f} | wheels imply {wzw:+.3f} | '
           f'ground truth {wzt:+.3f} rad/s  ({100 * wzt / ARC[2]:.0f}% of command)')
     print(f'wheel rigid-body fit residual {res:.4f} m/s rms '
           f'(0 = the four wheels agree on one twist)')

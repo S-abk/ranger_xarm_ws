@@ -177,16 +177,15 @@
         <child link="${name}_wheel_link"/>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <axis xyz="0 1 0"/>
-        <!-- 8 Nm is 78 N of thrust per wheel, ample for a 100 kg platform on
-             the flat, and the low value is deliberate. gz drives this joint
-             with a velocity motor, which is a near-rigid constraint on spin
-             rate; four of them plus four held steer angles over-determine a
-             3-DOF chassis, so any small steering error has the wheels
-             fighting each other instead of moving the robot. At 60 Nm the
-             motors always won and a commanded spin produced under 10% of
-             its yaw regardless of friction. Letting them be back-driven
-             lets the contact resolve the inconsistency, which is what a
-             real torque-driven wheel does. -->
+        <!-- The effort limit caps whatever drives this joint: the effort
+             command range, and on dartsim the force of a velocity servo.
+             History: under bullet-featherstone a velocity command was a
+             near-rigid motor constraint, and four of them plus four held
+             steer angles over-determined the 3-DOF chassis. With the limit
+             at 60 Nm a commanded spin produced under 10% of its yaw; an
+             8 Nm limit let the motors be back-driven and was tried as a
+             workaround before the wheels moved to effort control and the
+             engine to dartsim. -->
         <limit effort="60.0" velocity="25.0"/>
         <dynamics damping="0.02" friction="0.0"/>
       </joint>
@@ -235,7 +234,7 @@
        fixed priority (velocity, then position, then effort), so a joint that
        claims both silently runs the velocity law. Steering therefore claims
        position only and drive claims velocity only. -->
-  <xacro:macro name="ranger_wheels_ros2_control" params="name:='ranger_base' plugin">
+  <xacro:macro name="ranger_wheels_ros2_control" params="name:='ranger_base' plugin wheel_command:='effort'">
     <ros2_control name="${name}" type="system">
       <hardware>
         <plugin>${plugin}</plugin>
@@ -266,10 +265,23 @@
              what makes a real wheel work. ranger_4wis_controller.py closes
              the speed loop. -->
         <joint name="${corner}_wheel_joint">
-          <command_interface name="effort">
-            <param name="min">-60.0</param>
-            <param name="max">60.0</param>
-          </command_interface>
+          <xacro:if value="${wheel_command == 'effort'}">
+            <command_interface name="effort">
+              <param name="min">-60.0</param>
+              <param name="max">60.0</param>
+            </command_interface>
+          </xacro:if>
+          <xacro:unless value="${wheel_command == 'effort'}">
+            <!-- A speed target for the simulator's joint velocity drive. In
+                 Isaac that is a PhysX drive; on dartsim it is a servo whose
+                 force is capped by the joint effort limit above, so the
+                 contact can still slip. The rigid-constraint failure
+                 described above is a bullet-featherstone behaviour. -->
+            <command_interface name="velocity">
+              <param name="min">-25.0</param>
+              <param name="max">25.0</param>
+            </command_interface>
+          </xacro:unless>
           <state_interface name="position"/>
           <state_interface name="velocity"/>
         </joint>

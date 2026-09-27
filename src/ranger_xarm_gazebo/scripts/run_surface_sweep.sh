@@ -11,6 +11,7 @@ LOG=${LOG_DIR:-$(mktemp -d)}   # launch logs; override with LOG_DIR=
 source $WS/install/setup.bash >/dev/null 2>&1
 
 nohup ros2 launch ranger_xarm_gazebo sim.launch.py drive_base:=true sensors:=true \
+  wheel_drive:=${WHEEL_DRIVE:-effort} \
   headless:=true odom_tf:=false world:=$WS/src/ranger_xarm_gazebo/worlds/$WORLD.sdf \
   > $LOG/${WORLD}_sim.log 2>&1 &
 for i in $(seq 1 60); do
@@ -23,7 +24,7 @@ nohup ros2 launch ranger_xarm_bringup ekf_odom_imu.launch.py use_sim_time:=true 
   > $LOG/${WORLD}_ekf.log 2>&1 &
 sleep 30
 
-echo "########## $WORLD (launch logs in $LOG) ##########"
+echo "########## $WORLD, wheel_drive=${WHEEL_DRIVE:-effort} (launch logs in $LOG) ##########"
 for i in $(seq 1 $N); do
   echo "=== trial $i ==="
   $S/reset_pose.sh >/dev/null 2>&1

@@ -52,6 +52,9 @@ def launch_setup(context, *args, **kwargs):
     drive_base = LaunchConfiguration('drive_base').perform(context).lower() in ('true', '1', 'yes')
     sensors = LaunchConfiguration('sensors').perform(context).lower() in ('true', '1', 'yes')
     odom_tf = LaunchConfiguration('odom_tf').perform(context).lower() in ('true', '1', 'yes')
+    wheel_drive = LaunchConfiguration('wheel_drive').perform(context).lower()
+    if wheel_drive not in ('effort', 'velocity'):
+        raise ValueError(f"wheel_drive must be effort or velocity, got {wheel_drive}")
     prefix = 'xarm_'
 
     # The upstream controller config is written for a bare arm. This rewrites
@@ -105,6 +108,13 @@ def launch_setup(context, *args, **kwargs):
             controllers_yaml['controller_manager']['ros__parameters'][name] = cfg
         for name in ('ranger_steer_controller', 'ranger_wheel_controller'):
             controllers_yaml[name] = base_yaml[name]
+        # The yaml is written for the effort drive. The velocity drive swaps
+        # the controller type and leaves the joint list, whose order the
+        # 4WIS controller depends on, untouched.
+        if wheel_drive == 'velocity':
+            controllers_yaml['controller_manager']['ros__parameters'][
+                'ranger_wheel_controller']['type'] = \
+                'velocity_controllers/JointGroupVelocityController'
 
     # gz_ros2_control's hold_joints default (true) is deliberately left
     # alone. It writes a zero-velocity command to any actuated joint no
@@ -135,6 +145,7 @@ def launch_setup(context, *args, **kwargs):
             ' use_wheels:=', 'true' if drive_base else 'false',
             ' fix_base_to_world:=', 'false' if drive_base else 'true',
             ' gz_sensors:=', 'true' if sensors else 'false',
+            ' wheels_command_interface:=', wheel_drive,
         ]), value_type=str)
 
     gz = IncludeLaunchDescription(
@@ -236,7 +247,8 @@ def launch_setup(context, *args, **kwargs):
     wheels = spawner('ranger_wheel_controller')
     kinematics = Node(
         package='ranger_xarm_gazebo', executable='ranger_4wis_controller.py',
-        output='screen', parameters=[{'use_sim_time': True}],
+        output='screen',
+        parameters=[{'use_sim_time': True, 'command_mode': wheel_drive}],
     )
     # Dead reckoning from the wheel encoders. Ground truth comes from the
     # OdometryPublisher plugin in the description and lands on
@@ -416,6 +428,14 @@ def generate_launch_description():
                         'them to the topics the real drivers use. Off by '
                         'default: each rendering sensor costs a render pass '
                         'every frame.'),
+        DeclareLaunchArgument(
+            'wheel_drive', default_value='effort',
+            description='How the wheels are driven. effort: torque, with the '
+                        'speed loop closed in ranger_4wis_controller.py over '
+                        'DDS. velocity: a speed target for dartsim\'s own '
+                        'torque-limited joint drive, as Isaac does. The '
+                        'effort loop is too soft to hold wheel speeds on rough '
+                        'ground, which is why the base under-turns there.'),
         DeclareLaunchArgument(
             'drive_base', default_value='false',
             description='Add the 4WIS wheels and drive the base from '

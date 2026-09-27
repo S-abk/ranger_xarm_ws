@@ -63,6 +63,21 @@ class Ranger4WIS(Node):
         self.declare_parameter('wheel_kp', 1.5)
         self.declare_parameter('wheel_ki', 4.0)
         self.declare_parameter('max_wheel_effort', 30.0)
+        # 'effort' closes the speed loop here and sends torque. 'velocity'
+        # sends the wheel speed straight through to a simulator whose joint
+        # velocity drive is a torque-limited actuator, which then closes the
+        # loop itself at the physics rate; the PI gains below are unused.
+        #
+        # Isaac has always used 'velocity'. gz used 'effort' because under
+        # bullet-featherstone a joint velocity command is a rigid motor
+        # constraint that over-determines the chassis and stops it yawing
+        # (see ranger_wheels.xacro). The effort loop avoids that, but it
+        # closes over DDS on a 10 ms timer and cannot be made stiff: on
+        # rough ground the stock gains let wheel speeds sag up to 27 % and
+        # the base turned 59 % of a commanded arc, and any gain high enough
+        # to hold the speeds chatters between the effort clamps. sim.launch.py's
+        # wheel_drive argument selects between the two on the gz side.
+        self.declare_parameter('command_mode', 'effort')
 
         self.r = self.get_parameter('wheel_radius').value
         lx = self.get_parameter('half_wheelbase').value
@@ -72,6 +87,9 @@ class Ranger4WIS(Node):
         self.kp = self.get_parameter('wheel_kp').value
         self.ki = self.get_parameter('wheel_ki').value
         self.max_eff = self.get_parameter('max_wheel_effort').value
+        self.mode = self.get_parameter('command_mode').value
+        if self.mode not in ('effort', 'velocity'):
+            raise ValueError(f"command_mode must be effort or velocity, got {self.mode}")
 
         # Must match the corner order used for the controller's joint list.
         self.pos = {
@@ -110,7 +128,7 @@ class Ranger4WIS(Node):
         self.create_timer(5.0, self._check_feedback)
 
         self.get_logger().info(
-            f'4WIS ready: r={self.r} half_wheelbase={lx} half_track={ly}')
+            f'4WIS ready ({self.mode}): r={self.r} half_wheelbase={lx} half_track={ly}')
 
     def _on_cmd(self, msg):
         self.twist = msg
@@ -163,6 +181,10 @@ class Ranger4WIS(Node):
 
             omega = max(-self.max_w, min(self.max_w, omega))
             steers.append(angle)
+
+            if self.mode == 'velocity':
+                speeds.append(omega)
+                continue
 
             # PI on wheel speed -> torque. The integral is what holds a
             # steady cruise once the proportional error has shrunk, and it is
