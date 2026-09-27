@@ -255,6 +255,51 @@ is not blocking anything -- the gyro is still being fused, which is exactly
 what the sub-degree yaw error demonstrates. Worth revisiting only if an
 absolute-position source is added and starts dropping measurements.
 
+## Open: the two simulators disagree on rough ground by two orders of magnitude
+
+**Repos:** both · **Worlds:** `rough_ground.sdf` and Isaac's
+`--rough-ground`, which generates the same 101 bumps from the same
+constants.
+
+| | wheel odometry | EKF |
+| --- | --- | --- |
+| gz (dartsim) | 42 - 237 % | 8.6 - 31 % |
+| Isaac (PhysX) | 0.43 - 4.47 % | 0.54 - 2.89 % |
+
+Everything checked so far says the two are being asked the same
+question. Same grid, stagger, 24 mm height and mu 1.5. Both take the
+same `<sphere radius="${wheel_radius}"/>` collision from
+`ranger_wheels.xacro`, and the Isaac import lands it at
+`/colliders/*_wheel_link/*_tyre/sphere`. The bumps are struck in Isaac,
+not skimmed: driving straight across them the IMU shows 1.13 m/s^2 of
+vertical spread and 4.97 deg/s of pitch rate.
+
+What differs is the outcome of that contact. gz bogs the platform down,
+shortening the ground-truth path from 6.7 m to 4.5 - 5.6 m; Isaac barely
+slows it, 6.3 - 6.6 m. That is a contact-resolution difference between
+the two engines, and neither has been checked against the real platform,
+so the honest reading is that the two results bracket an unknown. Treat
+the gz figure as a pessimistic bound and the Isaac one as optimistic
+until a rough-surface run is measured on hardware, alongside the loaded
+rolling radius already listed above.
+
+## Watch: the non-finite guard in wheel_odometry.py is untested in anger
+
+**Repo:** this one · **File:** `src/ranger_xarm_gazebo/scripts/wheel_odometry.py`
+
+The first Isaac rough-ground run scored NaN on every trial. PhysX emitted
+a non-finite joint value while the base settled onto the bumps at spawn,
+and one sample was enough to poison the integrator for the whole
+session: NaN compares false against every bound, so it passed the
+angle-wrap loop untouched, went through the least squares, and left x, y
+and yaw NaN with nothing logged.
+
+The guard drops such a sample and warns, throttled. It did not fire on
+the rerun, so the underlying event is intermittent and the guard has
+never been observed catching a live one. If a run ever reports
+`non-finite joint data from ...`, that is the guard doing its job and
+the sample count is worth recording here.
+
 ## Optional: purge the Ouster metadata from published history
 
 **Repo:** this one · **File:** `192.168.1-metadata.json` (removed from the tree)
