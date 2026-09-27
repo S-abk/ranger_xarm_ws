@@ -11,6 +11,8 @@ install(PROGRAMS
   scripts/wheel_odometry.py
   scripts/gz_clock_relay.py
   scripts/arc_probe.py
+  scripts/crab_probe.py
+  scripts/crab_timeline.py
   scripts/make_surface_worlds.py
   scripts/run_surface_sweep.sh
   scripts/reset_pose.sh
