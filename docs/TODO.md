@@ -185,6 +185,54 @@ The discriminator that found it, and the one to reach for next time: set
 measurement starts being fused, the target frame is the problem, not the
 sensor, the data or the filter.
 
+## Resolved: what the EKF buys on rough ground, and what it cannot
+
+**Measured:** `rough_ground.sdf` (101 staggered 24 mm bumps), five trials from
+a teleported fixed start, `sensors:=true odom_tf:=false`.
+
+| estimator | pos err (% of path) | net yaw err |
+| --- | --- | --- |
+| wheel odometry | 42 - 237 % | 59 - 180 deg |
+| EKF (odom + gyro) | 8.6 - 31 % | <= 0.4 deg |
+
+On flat ground the two are indistinguishable (0.10 % vs 1.39 %), so rough
+ground is the only place the filter earns its keep. It does, decisively, but
+only on heading.
+
+A per-segment probe says why. Longitudinal traction over the bumps is
+essentially perfect -- driving straight, the wheels report 0.350 m/s against a
+ground truth of 0.350 m/s, and the filter accumulates 3 mm over six seconds.
+The error is entirely lateral: during a steered arc the wheels claim
+vx +0.281 while the base actually does vx +0.106, vy -0.124, and during a crab
+the wheels claim vy +0.306 while the base does vx +0.160, vy +0.044.
+
+The gyro observes the rotational half of that slip and corrects it, which is
+why yaw holds to a fraction of a degree. Nothing in this filter observes the
+translational half: `odom0_config` contributes vx and vy only and there is no
+absolute position measurement anywhere in the graph. Closing that gap needs
+lidar or visual odometry, not a better tuning of this EKF.
+
+### Harness bug found while measuring this
+
+The first four trials scored the EKF at 22 - 109 %, including a straight
+segment where wheel and ground-truth velocity agreed to three decimal places
+yet the score claimed 2.06 m of error. That was the scorer, not the filter.
+Each estimator lives in its own world frame; teleporting the base to a fixed
+start zeroes ground truth but leaves the filter integrating from the heading
+it already held, so the two frames sit at an angle and a raw displacement
+difference scores that angle as error. `ekf_score.py` and `segprobe.py` now
+rotate the estimator displacement by the initial heading difference first. The
+flat-ground numbers were taken without a teleport, so they were never affected.
+
+### Benign: `Detected jump back in time` on rough ground
+
+The heavier world drops the real-time factor to ~0.8 and `/clock` arrives
+slightly out of order (about two inversions per eight seconds), which clears
+the EKF's TF buffer a few times a second. It looks alarming in the log and it
+is not blocking anything -- the gyro is still being fused, which is exactly
+what the sub-degree yaw error demonstrates. Worth revisiting only if an
+absolute-position source is added and starts dropping measurements.
+
 ## Optional: purge the Ouster metadata from published history
 
 **Repo:** this one · **File:** `192.168.1-metadata.json` (removed from the tree)
