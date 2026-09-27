@@ -195,10 +195,16 @@ def launch_setup(context, *args, **kwargs):
         arguments=['/ground_truth/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry'],
     ) if drive_base else None
 
+    # Not ros_gz_bridge. The stock clock bridge relays every 1 kHz physics
+    # tick to every use_sim_time node (42 of them with the full stack up),
+    # never drops one, and so falls behind: ROS time ran 2-4x slower than
+    # simulation on the rough-ground worlds, and anything stamped with it
+    # was wrong by that factor. The relay throttles at the gz subscription
+    # and always forwards a current tick. See gz_clock_relay.py.
     clock_bridge = Node(
-        package='ros_gz_bridge', executable='parameter_bridge', output='screen',
-        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
-        parameters=[{'use_sim_time': True}],
+        package='ranger_xarm_gazebo', executable='gz_clock_relay.py',
+        output='screen',
+        parameters=[{'use_sim_time': False, 'rate_hz': 250.0}],
     )
 
     def spawner(name):

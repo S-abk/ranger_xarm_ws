@@ -185,54 +185,63 @@ The discriminator that found it, and the one to reach for next time: set
 measurement starts being fused, the target frame is the problem, not the
 sensor, the data or the filter.
 
-## Resolved: what the EKF buys across the four surfaces, and what it cannot
+## Resolved: what the EKF buys across the four gz surfaces
 
-**Measured:** all four worlds, five trials each from a teleported fixed start,
-`sensors:=true odom_tf:=false`. Ranges are across trials; flat ground is a
-single run predating the harness fix below (no teleport, so unaffected).
+**Measured after the clock fix below**, all four worlds, five trials each
+from a teleported fixed start, `sensors:=true odom_tf:=false`, 0
+"jump back in time" warnings on any world (160 on rough ground before).
+Reproduce with `run_surface_sweep.sh <world> 5`.
 
 | surface | wheel odom pos | wheel odom yaw | EKF pos | EKF yaw |
 | --- | --- | --- | --- | --- |
-| `empty_ground` | 0.10 % | +0.16 deg | 1.39 % | -0.01 deg |
-| `low_friction` (mu 0.25) | 0.21 - 0.46 % | 0.4 - 0.9 deg | 0.04 - 0.28 % | <= 0.07 deg |
-| `mixed_surface` (31 mu 0.15 patches) | 1.8 - 2.8 % | 0.3 - 4.4 deg | 1.4 - 2.2 % | <= 0.24 deg |
-| `rough_ground` (101 bumps, 24 mm) | 42 - 237 % | 59 - 180 deg | 8.6 - 31 % | <= 0.4 deg |
+| `empty_ground` | 0.10 - 0.11 % | +0.16 - +0.18 deg | 0.09 - 0.14 % | <= 0.01 deg |
+| `low_friction` (mu 0.25) | 0.42 - 0.45 % | +0.62 - +0.65 deg | 0.08 - 0.09 % | <= 0.05 deg |
+| `mixed_surface` (31 mu 0.15 patches) | 2.2 - 3.9 % * | -4.6 - +0.4 deg * | 1.9 - 3.2 % * | <= 0.28 deg |
+| `rough_ground` (101 bumps, 24 mm) | 22.9 - 47.0 % | +20.6 - +68.5 deg | 12.2 - 27.8 % | <= 0.87 deg |
 
-Three things fall out of this.
+\* `mixed_surface` trial 4 is excluded from the ranges and reported
+separately: the base did not turn at all (net ground-truth heading
++0.0 deg against ~+138 deg in every other trial) while wheel odometry
+believed it had turned +133 deg, giving 73.6 % wheel-odometry and 30.9 %
+EKF error. The gyro was right (EKF yaw error -0.00 deg). Something
+physical stopped the base following the arc -- likely a wheel caught on a
+patch edge -- and it happened once in five.
 
-Uniform low friction is not a hard surface for this base. A 4WIS platform
-drives all four wheels at modest acceleration, so mu 0.25 barely slips and
-both estimators stay under half a percent. Patchy friction is mildly harder
-because the wheels lose grip one at a time; geometry is far harder than
-friction of any kind.
+**The EKF is now at least as good as wheel odometry on every surface.** The
+earlier table put the flat-ground EKF at 1.39 % against wheel odometry's
+0.10 %, and this file concluded that on a surface where dead reckoning is
+already near-perfect the filter "can only add process noise". **That
+conclusion is withdrawn**: it was the lagging clock, which inflated the
+wheel twist that `odom0` fuses. With the clock fixed, flat ground is
+0.09-0.14 % for the EKF, parity with wheel odometry, and low friction is
+0.08-0.09 % against 0.42-0.45 %.
 
-Heading is where the filter always wins, and the margin widens exactly as the
-surface gets worse: from parity on flat ground to two orders of magnitude on
-the bumps. The cleanest single demonstration is `low_friction` trial 1, where
-wheel odometry's heading collapsed to -69 deg and carried its position error to
-4.84 m, while the EKF -- fed the same wheel velocities -- finished 3 mm from
-ground truth. The wheel velocities were never the problem there; the yaw that
-rotated them into the world frame was, and that is precisely the term the gyro
-replaces.
+Heading is still where the filter earns its keep: sub-degree on every
+surface, against wheel-odometry heading errors that reach 68 deg on the
+bumps.
 
-Position is a different story, and flat ground is the one place the EKF is
-(slightly) worse. It has no absolute position input anywhere, so on a surface
-where dead reckoning is already near-perfect the filter can only add process
-noise.
+**These numbers are not directly comparable with the pre-fix ones.** The
+clock fix changed how the robot drives, not only how it is measured:
+`ranger_4wis_controller.py`'s PI wheel-speed loop runs on the ROS clock,
+so while it lagged, the integrator's dt was 2-4x too small. On rough
+ground the base now consistently turns about 66 deg over a drive that
+turns 138 deg on the flat, where before the net heading varied widely
+between trials.
 
-A per-segment probe on `rough_ground` says where the residual comes from.
-Longitudinal traction over the bumps is
-essentially perfect -- driving straight, the wheels report 0.350 m/s against a
-ground truth of 0.350 m/s, and the filter accumulates 3 mm over six seconds.
-The error is entirely lateral: during a steered arc the wheels claim
-vx +0.281 while the base actually does vx +0.106, vy -0.124, and during a crab
-the wheels claim vy +0.306 while the base does vx +0.160, vy +0.044.
+The EKF's residual position error on the bumps is translational. The gyro
+observes rotation and corrects it, which is why yaw holds to a fraction
+of a degree; nothing in this filter observes translation other than the
+wheel twist, because `odom0_config` contributes vx and vy only and there
+is no absolute position measurement anywhere in the graph. When the base
+scrubs through an arc (see "gz under-rotates in arcs" below), the wheels
+report motion the base did not make and the filter has no way to reject
+it. Closing that gap needs lidar or visual odometry, not a better tuning
+of this EKF.
 
-The gyro observes the rotational half of that slip and corrects it, which is
-why yaw holds to a fraction of a degree. Nothing in this filter observes the
-translational half: `odom0_config` contributes vx and vy only and there is no
-absolute position measurement anywhere in the graph. Closing that gap needs
-lidar or visual odometry, not a better tuning of this EKF.
+An earlier per-segment probe here reported the arc and crab slide in
+body-frame velocities. Those figures used the old inflated wheel twist
+and an unverified world-frame assumption about ground-truth twist, and
+have been removed.
 
 ### Harness bug found while measuring this
 
@@ -246,130 +255,102 @@ difference scores that angle as error. `ekf_score.py` and `segprobe.py` now
 rotate the estimator displacement by the initial heading difference first. The
 flat-ground numbers were taken without a teleport, so they were never affected.
 
-### Benign: `Detected jump back in time` on rough ground
+### `Detected jump back in time` on rough ground was not benign
 
-The heavier world drops the real-time factor to ~0.8 and `/clock` arrives
-slightly out of order (about two inversions per eight seconds), which clears
-the EKF's TF buffer a few times a second. It looks alarming in the log and it
-is not blocking anything -- the gyro is still being fused, which is exactly
-what the sub-degree yaw error demonstrates. Worth revisiting only if an
-absolute-position source is added and starts dropping measurements.
+This file once called these warnings harmless. They were the symptom of
+the lagging clock described below: 160 of them on rough ground before
+the fix, none on any world after it.
 
-## Open: the gz clock lags simulation under load, which invalidated the slip evidence
+## Resolved: the gz clock lagged simulation under load
 
-**Repos:** both · **Worlds:** `rough_ground.sdf`, `rough_rounded.sdf`, and
-Isaac's `--rough-ground`.
+**Repos:** both. **Fix:** `gz_clock_relay.py` replaces the stock clock
+bridge in `sim.launch.py`; `wheel_odometry.py` computes twist from wheel
+velocities.
 
-### The rounded-bump test, and what it actually showed
+### The fault
 
-`rough_rounded.sdf` is `rough_ground.sdf` with every box replaced by a
-dome -- same 101 positions (both worlds now come from one
-`rough_grid()`), same 24 mm height, same 0.16 m footprint, same mu 1.5,
-no vertical face. It was built to test whether gz's apparent wheel slip
-came from the tyre sphere striking a box edge.
+gz publishes `/clock` once per 1 ms physics step. The stock
+`ros_gz_bridge` clock bridge relayed every tick, in order, never dropping
+one, to every use_sim_time node -- 42 subscribers with the full stack up,
+so ~42,000 deliveries a second. It sustained roughly a quarter of that
+with a whole core pegged, and the shortfall accumulated as a backlog: ROS
+time ran 2-4x slower than simulation on the rough-ground worlds (3.9 s
+against 8.2 s of sim per 10 s wall on boxes, 2.2 s against 8.9 s on
+domes). Everything stamped with ROS time inherited the lag; ground truth
+and the bridged sensors, stamped by gz, did not.
 
-The answer is that there was no slip to explain. Measured dt-free -- total
-wheel rotation times radius, against ground-truth distance over the same
-window -- gz does not slip on either shape:
+Switching the bridge to the built-in `CLOCK` QoS profile (best-effort,
+keep-last-1) did not help -- 0.57 against 0.74 -- because the cost was
+the fan-out, not reliability.
 
-| gz, straight run at 0.35 m/s | wheels rolled | base travelled | slip |
-| --- | --- | --- | --- |
-| boxes | 2.568 m | 2.562 m | 0.2 % |
-| boxes | 2.582 m | 2.576 m | 0.2 % |
-| domes | 2.506 m | 2.497 m | 0.4 % |
+### The fix, and the measurement
 
-Isaac, measured the same way, does not slip either.
+`gz_clock_relay.py` subscribes to gz `/clock` through gz-transport with a
+250 Hz throttle, so excess ticks are dropped at the source and the ROS
+clock always carries a current sim time. 250 Hz stays above the 150 Hz
+controller_manager rate. Driving across the domes, the worst case:
 
-**The previously reported "+178 % gz slip against 0 % in Isaac" was an
-artifact and is withdrawn.** So was the edge hypothesis it motivated.
+| clock source | ROS clock rate / sim rate |
+| --- | --- |
+| stock bridge | 0.25 - 0.74 (load-dependent) |
+| stock bridge, `CLOCK` QoS | 0.57 |
+| `gz_clock_relay.py`, 250 Hz | 0.98 - 1.00 |
 
-### Root cause: the bridged /clock falls behind simulation
+That alone was not enough for `wheel_odometry.py`. With 150 Hz joint
+states stamped from a 250 Hz clock, each ~7 ms interval is recorded as
+4 or 8 ms, and averaging travel/dt over that jitter still read 23-35 %
+high -- the mean of the ratios exceeds the ratio of the means. The twist
+now comes from the wheel *velocity* interface through the same least
+squares as the pose, which needs no dt and so no clock: 0.350 m/s
+against 0.350 m/s ground truth. Differencing stays as the fallback when
+no velocity interface is present. Pose was never affected and is still
+integrated from wheel travel.
 
-gz publishes `/clock` once per 1 ms physics step. `ros_gz_bridge` relays
-every one, in order, without dropping any -- and under load it cannot keep
-pace, so ROS time runs progressively slower than simulation time. Over a
-10 s wall window:
+The same change fixes the latent bug noted earlier: a repeated stamp
+used to discard that step's wheel travel, because the position was
+consumed before the `dt <= 0` early return. Pose now integrates
+unconditionally and the fallback twist carries such travel into the next
+interval.
 
-| world | `/clock` (bridged) advanced | gz sim advanced | ROS time runs |
-| --- | --- | --- | --- |
-| boxes | 3.905 s | 8.240 s | 2.1x slow |
-| domes | 2.197 s | 8.920 s | 4.1x slow |
+### Earlier findings that stand
 
-Every ROS node on sim time uses that lagging clock: the controller_manager
-stamps joint states with it, and `wheel_odometry.py` divides true wheel
-travel by those compressed intervals, inflating its reported speed by the
-lag factor. The apparent "slip" therefore tracked CPU load, not physics --
-+178 % and +78-99 % on the same box world in different runs, +252-290 % on
-domes, which are heavier to simulate. Ground truth and the bridged
-sensors (IMU, lidar) carry gz's own stamps and are unaffected, which is
-why the two disagreed.
+The "+178 % gz slip" was this artifact, and the edge hypothesis with it:
+measured dt-free, gz does not slip on straights over boxes (0.2 %) or
+domes (0.4 %). `rough_rounded.sdf` stays in the tree as a same-grid,
+edgeless variant. Eliminated as causes of the gz/Isaac gap: geometry and
+collider, Isaac wheel friction, Isaac timestep, PhysX contact offset.
 
-### What this does and does not invalidate
+## Open: gz under-rotates in arcs on rough ground; Isaac does not
 
-- **Wheel-odometry pose is unaffected.** It integrates wheel travel, which
-  needs no dt. Verified: 1056 joint-state messages, no repeated stamps,
-  `/odom` distance 2.589 m against ground truth 2.592 m.
-- **Wheel-odometry twist is inflated** by the lag factor on heavy worlds.
-- **The gz EKF on heavy worlds is compromised.** `odom0_config` fuses
-  only that twist (vx, vy), and the IMU it is fused with is stamped on
-  gz's correct clock while the odometry is stamped on the lagging one.
-  The rough-ground gz EKF figures (8.6-31 %) should be treated as suspect,
-  and the "Detected jump back in time" warnings are likely the same
-  fault. Flat-ground gz EKF (1.39 %) is probably unaffected at the lighter
-  load, but that is not measured.
-- **The gz/Isaac gap in wheel-odometry pose (42-237 % against
-  0.43-4.47 %) is real and still unexplained.** It is not generated on
-  straight segments; it comes from the steered arc and the crab, and
-  mostly as heading error (59-180 deg in gz).
+With the measurement chain fixed, the remaining gz/Isaac gap is visible
+directly in ground truth rather than inferred from wheel odometry. On
+`rough_ground` the gz base turns about 66 deg over a drive that turns
+138 deg on the flat, and wheel odometry, which reads steer angles and
+wheel travel, believes it turned the full amount -- hence its +52 to +68
+deg heading errors. Isaac on the same bumps turns 131-134 deg.
 
-### Candidate for the remaining gap
+So in gz the wheels roll and steer as commanded but the base does not
+follow the arc: it scrubs. The leading candidate is still the drive: the
+gz PI speed loop (`wheel_kp` 1.5, `wheel_ki` 4.0, `max_wheel_effort` 30)
+against Isaac's exact velocity drive, with inner and outer wheels needing
+different speeds in an arc. Test: log commanded against actual wheel
+speed per corner, and `wheel_odometry`'s least-squares residual, through
+an arc on rough ground.
 
-The two sides do not drive the wheels the same way. Isaac uses an exact
-velocity drive. gz runs `ranger_4wis_controller.py`'s PI speed loop
-(`wheel_kp` 1.5, `wheel_ki` 4.0, `max_wheel_effort` 30) -- on the lagging
-clock, so its integrator's dt is 2-4x too small. On a straight all four
-wheels want the same speed and the loop's accuracy barely matters. In an
-arc the inner and outer wheels need different speeds matched to the steer
-geometry; if the loop tracks them poorly the wheels fight, the base
-scrubs, and the least-squares heading goes wrong. Test: log commanded
-against actual wheel speed per corner, and `wheel_odometry`'s
-least-squares residual, through an arc on rough ground.
-
-### Fixing the clock
-
-Not done yet. Options: bridge `/clock` with a keep-last-1 QoS so a slow
-consumer drops stale ticks instead of backlogging; have gz publish clock
-at a lower rate than the physics step; or reduce load (the lag is
-worst with rendering sensors on). Whatever is chosen, re-run the gz EKF
-rough-ground scores afterwards -- the ones in this file predate it.
-
-### Also noted, not fixed
-
-`wheel_odometry.py` consumes each wheel position before its `dt <= 0`
-early return, so a message with a repeated stamp would silently discard
-that step's travel. Measured not to fire (0 repeats in 1056), but it
-should integrate pose regardless and skip only the twist.
-
-The per-segment "truth vx/vy" decomposition used in earlier probes
-rotates ground-truth twist by ground-truth yaw, i.e. assumes it is
-world-frame. That is unverified for either simulator; if either publishes
-body-frame twist, the arc and crab slide figures are wrong. Rely on
-distance and heading, which are frame-free.
-
-### Eliminated earlier (still stands)
-
-Geometry and collider identical; Isaac wheel friction 0.5 -> 1.2 no effect;
-Isaac timestep 1/60 -> 1/240 s no effect; PhysX contact offset default ->
-2 mm no effect.
+The Isaac EKF scores in `ranger_xarm_isaac/README.md` were taken with the
+old differencing twist. Isaac's clock is its own and did not lag, so they
+are probably close, but they have not been re-run.
 
 ### Environment faults (still stand)
 
 A Gazebo server survived teardown for hours and served a second
-`/controller_manager` from its in-process `gz_ros2_control` -- check
-`pgrep -f "gz sim"`, since its process name is `ruby`. Stale Fast DDS
-segments in `/dev/shm` compound it; clear them between runs. `grep` is
-unreliable on USD crate files. The earlier 5-8x vertical-acceleration
-comparison was confounded by mismatched IMU rates.
+`/controller_manager` from its in-process `gz_ros2_control` -- find gz
+with `pgrep -f "gz sim"`, since its process name is `ruby`. Stale Fast DDS
+segments in `/dev/shm` compound it. `run_surface_sweep.sh` now does both
+between worlds. `grep` is unreliable on USD crate files. The earlier
+5-8x vertical-acceleration comparison was confounded by mismatched IMU
+rates. The per-segment "truth vx/vy" decomposition assumed world-frame
+ground-truth twist, which is unverified for either simulator.
 
 ## Watch: the non-finite guard in wheel_odometry.py is untested in anger
 
