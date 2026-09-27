@@ -442,16 +442,66 @@ low-grip patches. The effort drive had one such failure in five.
 The `low_friction` EKF moving from 0.08 % to 0.44 %, now slightly worse
 than wheel odometry, is also unexplained.
 
-### Next: gate wheel speed on steering convergence
+### The steering convergence gate: flat fixed, rough held, two regressions left
 
-The standard 4WIS remedy: in velocity mode, scale each wheel's commanded
-speed by how close its knuckle is to its target angle, e.g. by
-max(0, cos(steer error)), so a wheel does not drive while it is still
-turning. `ranger_4wis_controller.py` already subscribes to
-`/dynamic_joint_states` and can read the steer positions there. Then
-re-run the flat segment breakdown, the mixed-surface sweep, and the
-rough-ground sweep; if the regressions go and rough ground holds, make
-`velocity` the gz default.
+In velocity mode `ranger_4wis_controller.py` now scales each wheel's
+speed by max(0, cos(steer error)) ** `steer_gate_power`, using the
+measured knuckle angle from `/dynamic_joint_states`. Flat-ground heading
+error per segment:
+
+| gate | arc | crab | total |
+| --- | --- | --- | --- |
+| none | -0.61 | +2.03 | +1.33 |
+| power 1 (plain cosine) | -0.60 | +0.79 | +0.14 |
+| power 3 (default) | -0.59 | +0.11 | -0.53 |
+
+The gate removes the crab scrub. Power 1's small total is partly
+cancellation between the arc and the crab; per segment, power 3 is
+better. The arc's -0.6 deg is unchanged at every power, so it is not a
+steering transition. The steady arc is exact (wheels and truth both
+0.400 rad/s), which points at the abrupt stop at its end: a stiff drive
+halts the wheels while the base's inertia carries it on. Not pursued.
+
+Four-surface sweep with the gated velocity drive, five trials each, all
+healthy:
+
+| surface | effort drive | velocity, ungated | velocity, gated |
+| --- | --- | --- | --- |
+| `empty_ground` wheel / EKF | 0.10 / 0.09 - 0.14 % | 1.04 - 1.10 / 0.14 - 0.20 % | 0.06 - 0.18 / 0.16 - 0.19 % |
+| `low_friction` | 0.42 - 0.45 / 0.08 - 0.09 % | 0.38 - 0.40 / 0.43 - 0.45 % | 0.44 - 0.46 / 0.68 - 0.69 % |
+| `mixed_surface` | 1 of 5 failed | 3 of 5 failed | 2 of 5 failed |
+| `rough_ground` | 22.9 - 47.0 / 12.2 - 27.8 % | 3.5 - 8.4 / 0.77 - 1.84 % | 0.72 - 9.19 / 0.85 - 1.87 % |
+
+Resolved: the flat-ground regression. Held: rough ground, still
+comparable to Isaac.
+
+Still open:
+
+- **`low_friction` EKF, 0.08 % under effort, 0.68-0.69 % gated.** Wheel
+  odometry is unchanged (0.44-0.46 %) and EKF heading is within
+  0.05 deg, so the filter is adding position error on top of an input
+  that is already good. Remarkably consistent across trials. The gate
+  made it worse than ungated (0.43-0.45 %). Unexplained; a candidate is
+  the EKF's velocity model smoothing through the stiff drive's abrupt
+  stops.
+- **`mixed_surface` failures, 2 of 5.** Same signature as before: the
+  base turns 46-53 deg of a 134 deg drive while wheel odometry believes
+  it turned the full amount, and the EKF heading stays within 0.2 deg.
+  The failing trials repeat almost exactly, so this is a bimodal outcome
+  in how the base meets the 8 mm low-grip patches, and five trials per
+  drive is too few to say the drives differ. It may also simply be
+  realistic: a stiff drive on mu 0.15 patches under some wheels.
+
+**The default stays `effort`.** The velocity drive is far better on
+rough ground and matches both Isaac and how a real motor controller
+behaves; the effort drive is better by centimetres on `low_friction` and
+possibly on `mixed_surface`. That trade is a judgement call, recorded
+here rather than made silently.
+
+**Isaac pins the gate off** (`steer_gate_power: 0.0` in
+`ranger_xarm_isaac/launch/control.launch.py`). Isaac also runs the
+controller in velocity mode, and the gate has not been tested there;
+pinning it keeps Isaac's validated behaviour until it is.
 
 ### Environment faults (still stand)
 

@@ -63,6 +63,17 @@ class Ranger4WIS(Node):
         self.declare_parameter('wheel_kp', 1.5)
         self.declare_parameter('wheel_ki', 4.0)
         self.declare_parameter('max_wheel_effort', 30.0)
+        # Velocity mode only: scale each wheel's speed by
+        # max(0, cos(steer error)) ** steer_gate_power, the error being the
+        # knuckle's measured angle against its target. A stiff velocity drive
+        # otherwise spins a wheel at full speed while its knuckle is still
+        # sweeping, so the wheel pushes the base in the wrong direction: on
+        # flat ground that scrub put +2.03 deg of heading error into every
+        # transition into the crab. Power 1 is ordinary cosine compensation,
+        # which still lets a wheel 45 deg off target drive at 70 %; measured,
+        # it cut that crab error only to +0.79 deg. Power 3 cut it to
+        # +0.11 deg. 0 disables the gate.
+        self.declare_parameter('steer_gate_power', 3.0)
         # 'effort' closes the speed loop here and sends torque. 'velocity'
         # sends the wheel speed straight through to a simulator whose joint
         # velocity drive is a torque-limited actuator, which then closes the
@@ -87,6 +98,7 @@ class Ranger4WIS(Node):
         self.kp = self.get_parameter('wheel_kp').value
         self.ki = self.get_parameter('wheel_ki').value
         self.max_eff = self.get_parameter('max_wheel_effort').value
+        self.gate_power = float(self.get_parameter('steer_gate_power').value)
         self.mode = self.get_parameter('command_mode').value
         if self.mode not in ('effort', 'velocity'):
             raise ValueError(f"command_mode must be effort or velocity, got {self.mode}")
@@ -100,6 +112,10 @@ class Ranger4WIS(Node):
         }
         self.last_steer = {c: 0.0 for c in CORNERS}
         self.wheel_vel = {c: 0.0 for c in CORNERS}
+        # Measured knuckle angles, for the steering gate. None until the
+        # first joint state arrives; the gate stays open until then rather
+        # than holding the wheels still on a guess.
+        self.steer_pos = {c: None for c in CORNERS}
         self.integral = {c: 0.0 for c in CORNERS}
 
         self.steer_pub = self.create_publisher(
@@ -128,7 +144,9 @@ class Ranger4WIS(Node):
         self.create_timer(5.0, self._check_feedback)
 
         self.get_logger().info(
-            f'4WIS ready ({self.mode}): r={self.r} half_wheelbase={lx} half_track={ly}')
+            f'4WIS ready ({self.mode}'
+            + (f', steer gate power {self.gate_power:g}' if self.mode == 'velocity' else '')
+            + f'): r={self.r} half_wheelbase={lx} half_track={ly}')
 
     def _on_cmd(self, msg):
         self.twist = msg
@@ -136,6 +154,11 @@ class Ranger4WIS(Node):
 
     def _on_joints(self, msg):
         for c in CORNERS:
+            steer = f'{c}_steer_joint'
+            if steer in msg.joint_names:
+                iv = msg.interface_values[msg.joint_names.index(steer)]
+                if 'position' in iv.interface_names:
+                    self.steer_pos[c] = iv.values[iv.interface_names.index('position')]
             name = f'{c}_wheel_joint'
             if name not in msg.joint_names:
                 continue
@@ -183,6 +206,10 @@ class Ranger4WIS(Node):
             steers.append(angle)
 
             if self.mode == 'velocity':
+                measured = self.steer_pos[c]
+                if self.gate_power > 0.0 and measured is not None:
+                    gate = max(0.0, math.cos(angle - measured)) ** self.gate_power
+                    omega *= gate
                 speeds.append(omega)
                 continue
 
