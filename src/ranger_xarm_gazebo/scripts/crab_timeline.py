@@ -14,6 +14,7 @@ drive starts wherever the base is, which is fine on flat ground.
 """
 import math
 import subprocess
+import sys
 import time
 
 import rclpy
@@ -84,7 +85,10 @@ def main():
     while (n.o is None or n.g is None) and time.time() - t0 < 30:
         rclpy.spin_once(n, timeout_sec=0.1)
     n.hold(0, 0, 0, 2.0)
-    n.hold(0.30, 0, 0.40, 3.0)      # arc: leaves the knuckles at the arc angles
+    # arc: leaves the knuckles at the arc angles. Its length sets the world
+    # heading the crab happens at (0.4 rad/s, so 3 s -> ~69 deg, 6 s -> ~137).
+    arc_s = float(sys.argv[1]) if len(sys.argv) > 1 else 3.0
+    n.hold(0.30, 0, 0.40, arc_s)
     n.hold(0, 0, 0, 1.5)
     n.rec = True
     tc = n.t()
@@ -93,11 +97,13 @@ def main():
     n.hold(0, 0, 0, 1.5)
     n.rec = False
     rows = n.rows
+    r0_heading = rows[0]['gy'] if rows else float('nan')
 
     def at(tt):
         return min(rows, key=lambda r: abs(r['t'] - tt))
     swept = next((r['t'] for r in rows if r['t'] >= tc and all(abs(abs(a) - 90) < 1.0 for a in r['st'])), te)
 
+    print(f'arc {arc_s:.1f} s -> crab at world heading {r0_heading:+.1f} deg')
     print(f'{"t":>5s}  {"odom yaw":>8s} {"truth":>7s} {"err":>6s}   knuckles FL FR RL RR (deg)'
           f'        wheel speed FL FR RL RR (m/s)')
     r0 = rows[0]
