@@ -649,13 +649,44 @@ mu 0.15 patches.
 The velocity drive now beats the effort drive on the surface where it
 was clearly worst. The crab's +0.24 deg is a separate small residual.
 
-**Not yet rerun with the limit:** `empty_ground`, `mixed_surface` and
-`rough_ground` in gz, where it is now the default, and Isaac, where it is
-pinned off (`max_wheel_accel: 0.0` in
-`ranger_xarm_isaac/launch/control.launch.py`) until it has been measured
-there. It changes only transitions -- ramps take about 0.35 s at the
-scored speeds -- so steady-state tracking should be unaffected, but that
-is an expectation, not a result.
+### The limit on every surface, and in Isaac
+
+gz, five trials each, all healthy (0 clock warnings, 0 duplicate
+servers):
+
+| surface | common gate, no limit | common gate + 1.0 m/s^2 |
+| --- | --- | --- |
+| `empty_ground` wheel / EKF | 0.14 - 0.15 / 0.23 - 0.24 % | 0.23 - 0.25 / **0.05 - 0.06 %** |
+| `low_friction` | 0.75 - 0.79 / 0.75 - 0.79 % | **0.20 - 0.22 / 0.06 %** |
+| `mixed_surface` | 1 of 5 failed | **0 of 5 failed**, 2.7 - 2.9 / 0.50 - 1.14 % |
+| `rough_ground` | 2.0 - 5.3 / 1.3 - 2.1 % | 2.4 - 7.2 / 0.86 - 1.86 % |
+
+The limit also removed the `mixed_surface` failures, the bimodal
+outcome that had survived every earlier change: the base turning ~48 deg
+of a 134 deg drive. Those were most likely the same skid, triggered on
+the mu 0.15 patches, where the skid threshold is lowest. Flat-ground
+wheel odometry is slightly worse (0.23 against 0.14 %, a steady
++0.34 deg heading), but the EKF there is the best it has been.
+
+Isaac, same USD, worlds and starts as the earlier gate tests (with the
+limit at 0 the controller returns the speeds untouched, so the common
+gate results are the limit-off baseline):
+
+| Isaac | common gate, no limit | common gate + 1.0 m/s^2 |
+| --- | --- | --- |
+| flat, wheel / EKF | 0.17 - 0.25 / 0.23 - 0.29 % | **0.08 - 0.12** / 0.15 - 0.47 % |
+| rough trial 1 (origin) | 2.57 / 1.49 % | 2.99 / 1.59 % |
+| rough trial 2 | 0.82 / 0.72 % | 0.70 / 0.77 % |
+
+No regression in Isaac, and flat-ground wheel odometry improves; the
+rough pairs are neutral within what two can resolve. **Isaac now runs
+the limit too**, so both simulators again share one controller
+configuration: velocity drive, common gate at power 3, 1.0 m/s^2.
+
+Isaac's EKF heading errors (+0.5 to +1.0 deg on flat) are larger than
+its wheel odometry's. They predate the limit and match the earlier
+observation that Isaac's IMU publishes at ~34 Hz with the render tick;
+integrating a gyro that slowly loses yaw. Not a controller issue.
 
 Also found while testing: `steer_gate_power:=3` on the command line
 crashed the node, because rclpy rejected the integer for a parameter
