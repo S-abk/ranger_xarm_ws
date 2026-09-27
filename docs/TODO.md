@@ -142,60 +142,59 @@ payload varies enough to matter.
 
 ## The EKF does not track heading against the simulator
 
-Not a verdict on the EKF. A record of where the investigation stopped, so
-the next person does not repeat the ruling-out.
+Still open. What follows is the evidence and the ruling-out, so the next
+person starts where this stopped rather than at the beginning.
 
-Symptom: with gz on `empty_ground`, `sensors:=true`, `odom_tf:=false` and
-`ranger_xarm_bringup/ekf_odom_imu.launch.py use_sim_time:=true`, over a
-drive with 138.0 deg of real rotation:
-
-```
-wheel odometry    0.007 m   0.11% of path    +0.17 deg
-EKF (odom+gyro)   5.799 m  86.76% of path  -138.00 deg
-```
-
-The EKF's orientation stays exactly identity and its reported yaw rate
-stays exactly 0.0. `-138.00` against `+138.0` is not drift, it is the
-filter never rotating at all. Wheel odometry on the same run is 0.11%, so
-`/odom` is not the problem.
-
-Ruled out, each checked directly:
-
-- TF. `base_footprint -> os_imu` resolves.
-- Frame id. The IMU publishes `os_imu`, which is that frame.
-- Covariance. `angular_velocity_covariance[8]` is 1e-05, not the -1 that
-  would mean "unavailable".
-- Timestamps. Sim clock, IMU, corrector and odom stamps all agree, and
-  `use_sim_time` is true on both the corrector and the EKF.
-- Config indices. `imu0_config[11]` is vyaw and `odom0_config[6,7]` are
-  vx, vy, which is the intended split: wheels for speed, gyro for
-  turning.
-- Gyro data. `/ouster/imu` reads 1.36 rad/s during a commanded spin, so
-  the measurement exists.
-
-Still unexplained: why a valid, correctly framed, correctly stamped vyaw
-measurement with a sane covariance produces no yaw at all.
-
-**Separately, and this one IS a defect.** The corrector seeds a
-gyro-z bias of +0.3350 deg/s, measured on hardware, as its starting
-value. The simulated IMU has exactly zero bias, so the corrector injects
-a phantom -0.335 deg/s, and then its own sanity check refuses every
-re-estimate:
+Reproducible on a clean single stack (one gz, one RSP, four static
+transform publishers, nothing left over), gz `empty_ground`,
+`sensors:=true`, `odom_tf:=false`:
 
 ```
-seeded gyro-z bias +0.3350 deg/s
-rejecting gyro bias jump of -0.3350 deg/s (limit 0.2005); robot may not
-have been truly stationary
+                  pos err   % of path   yaw err     (path 6.762 m, +138.0 deg)
+wheel odometry     0.007 m     0.11%     +0.17 deg
+EKF (odom+gyro)    6.219 m    91.97%   -147.39 deg
 ```
 
-`max_bias_step` is 0.0035 rad/s, so the correction it needs (0.335) is
-larger than the step it will accept (0.2005) and it can never converge.
-The guard that protects it from a bad stationary sample on hardware locks
-it onto the wrong value permanently against any IMU whose bias differs
-from the seed by more than 0.2 deg/s. That is worth fixing regardless of
-the yaw question, and it is a reason not to treat the seed as harmless.
+**The mechanism is identified.** With `debug: true` the filter says so
+itself, once per IMU message:
 
-Both of these were only findable once `/odom` stopped being ground truth.
+```
+------ RosFilter<T>::prepareTwist (imu0_twist) ------
+Could not transform measurement into base_footprint. Ignoring...
+Did *not* enqueue measurement for imu0_twist_twist
+```
+
+Every IMU measurement is discarded at the transform step. `odom0` is
+fused correctly over the same run, so the filter itself works: driven
+straight it reported 1.924 m against ground truth 1.922 m.
+
+**What is NOT the cause**, each checked directly rather than assumed:
+
+- Data. Over a commanded +0.6 rad/s spin: ground truth +0.5937, raw gyro
+  +0.5949, `/ouster/imu_corrected` +0.5886. The measurement is right up
+  to the filter's input.
+- Message format. 953 synthetic IMU messages with a full non-degenerate
+  covariance, correct frame and sim-time stamps produced the same zero.
+- QoS. Publisher and subscriber are both BEST_EFFORT, and the callback
+  demonstrably fires (4464 `imuCallback` entries in the debug log).
+- TF. `base_footprint -> os_imu` resolves to (-0.375, 0, 1.473) and
+  `base_footprint -> base_link` to (0, 0, 0.327), both via a tf2 buffer
+  in a separate process. The chain is entirely static.
+- `tf_timeout`. Raising it from the default 0 to 0.2 changed nothing.
+- Config. `imu0_config[11]` is vyaw, `odom0_config[6,7]` are vx/vy,
+  rejection thresholds are infinite, and vyaw process noise is 0.02.
+- Diagnostics. The filter reports itself as functioning normally and logs
+  no warning at all; the discard is visible only under `debug: true`.
+
+So: a transform that succeeds from outside the filter fails inside it.
+That is where to pick up. Worth instrumenting which exact lookup and at
+which stamp `prepareTwist` is attempting, since the obvious candidates
+are eliminated.
+
+Two cautions. This says nothing about hardware, where the same filter has
+been used and where the frames are supplied by the Ranger driver rather
+than by a simulator. And it only became visible once `/odom` stopped
+being ground truth, which is the point of that change.
 
 ## Optional: purge the Ouster metadata from published history
 

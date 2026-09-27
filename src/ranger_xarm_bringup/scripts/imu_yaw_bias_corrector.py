@@ -51,7 +51,10 @@ class ImuYawBiasCorrector(Node):
         self.declare_parameter('imu_in', '/ouster/imu')
         self.declare_parameter('imu_out', '/ouster/imu_corrected')
         self.declare_parameter('odom_in', '/odom')
-        # seed: +0.335 deg/s
+        # Seed only: +0.335 deg/s, measured on one unit. It is what the
+        # filter uses until the first stationary window replaces it
+        # outright, so a wrong seed costs a few seconds rather than the
+        # whole run. See _maybe_update.
         self.declare_parameter('initial_bias', 0.005847)
         self.declare_parameter('stationary_linear', 0.01)     # m/s
         self.declare_parameter('stationary_angular', 0.01)    # rad/s
@@ -142,6 +145,31 @@ class ImuYawBiasCorrector(Node):
             return
         new = sum(self.samples) / len(self.samples)
         step = new - self.bias
+        # Snap on the first window, exactly as _maybe_update_rp does, and
+        # only police the steps after that.
+        #
+        # initial_bias is a SEED, measured on one unit on one day. The step
+        # limit exists to reject a window where the robot was not really
+        # stationary, which is a claim about consecutive estimates, not
+        # about the seed. Applying it to the very first estimate turns the
+        # seed into a constraint: any IMU whose true bias differs from it
+        # by more than max_bias_step can never be reached, because every
+        # correction large enough to get there is larger than the largest
+        # step allowed.
+        #
+        # That is not hypothetical. Against a simulated IMU with zero bias
+        # the correction needed is 0.335 deg/s and the limit is 0.2005, so
+        # it rejected every window forever and sat on a phantom bias it had
+        # invented. The same happens on hardware after a recalibration, a
+        # temperature change, or a different unit.
+        if self.n_updates == 0:
+            self.get_logger().info(
+                f'first stationary window: taking measured gyro-z bias '
+                f'{math.degrees(new):+.4f} deg/s over the '
+                f'{math.degrees(self.bias):+.4f} seed')
+            self.bias = new
+            self.n_updates += 1
+            return
         if abs(step) > self.max_step:
             self.get_logger().warn(
                 f'rejecting gyro bias jump of {math.degrees(step):+.4f} deg/s '
