@@ -757,11 +757,36 @@ fore-and-aft; no rigid-body motion matches that, so odometry fits "no
 turn", while the unequal front/rear tyre forces (the arm loads one end
 more) turn the base anyway. Removed rather than left as a switch.
 
-What remains at power 10 (~0.1 deg on `low_friction` in the full drive)
-has a different signature -- odometry 0.00, truth -0.12 -- so it is not
-wheels driving early. One untested candidate: all four knuckles swing
-the same way into the crab, and their combined reaction torque twists
-the chassis, which yields most on low grip.
+### The last ~0.1 deg is a physics-engine artifact
+
+What remained at power 10 (~0.1 deg on `low_friction` in the full drive:
+odometry 0.00, truth -0.12, repeatable) is not the controller or the
+odometry.
+
+- **Not the knuckles' reaction torque.** Swinging the knuckles with the
+  wheels held (`crab_probe.py`, direct control) turns the base 0.00 deg,
+  even on `low_friction`, from either start angle.
+- **It depends on the world heading the crab happens at.** Varying the
+  arc before it (`crab_timeline.py <arc seconds>`):
+
+| crab at world heading | kind | base's real turn during the sweep |
+| --- | --- | --- |
+| +41.2 deg | diagonal | -0.10 deg |
+| +133.7 deg | diagonal | -0.11 deg |
+| -139.2 deg | diagonal | -0.10 deg |
+| +68.5 deg | 21.5 deg off axis | +0.03 deg |
+| -157.4 deg | 22.6 deg off axis | -0.05 deg |
+| +176.4 deg | axis | +0.04 deg |
+| -88.4 deg | axis | +0.02 deg |
+
+All three diagonals give -0.10/-0.11 deg and the axes +0.02 - 0.04.
+That is the signature of a friction pyramid aligned to the world X/Y
+axes -- friction capped separately along each world axis, so a slipping
+contact finds a different limit depending on its direction -- rather
+than a true friction cone. The full scored drive happens to reach the
+crab at ~137 deg, a diagonal, which is why it showed the largest value.
+Real friction does not depend on world direction, so there is nothing
+left to fix in the controller or the odometry for the crab.
 
 `crab_timeline.py` now treats a knuckle at -90 as converged, so it
 reads correctly with any steering scheme.
