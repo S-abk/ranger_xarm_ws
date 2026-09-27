@@ -147,15 +147,43 @@ position error  0.003 m       0.002 m
 heading error   -0.09 deg     +0.62 deg
 ```
 
-### Two things this does not prove
+### Ground surface decides whether this is a test at all
 
-**The simulators barely slip.** On flat ground with sphere contacts, dead
-reckoning tracks ground truth to well under a tenth of a percent. Real
-odometry does not do that. So this apparatus can demonstrate that an
-estimator is *wrong*, but it cannot yet demonstrate that one is *robust*:
-there is almost no drift here to be robust against. Introducing slip
-(lower friction, payload, uneven ground) is what would make it a real
-test.
+On flat ground dead reckoning tracks ground truth to under a tenth of a
+percent, which is not a compliment to the odometry: it means the floor
+never lets the wheels slip. `scripts/make_surface_worlds.py` generates
+three variants that break that, and they do not break it equally. Same
+drive on each:
+
+```
+world           path      pos err    % of path   heading err
+empty_ground    5.961 m   0.003 m      0.05%      -0.09 deg
+low_friction    5.937 m   0.005 m      0.09%      -0.04 deg
+mixed_surface   5.840 m   0.027 m      0.46%      +1.11 deg
+rough_ground    4.506 m   1.123 m     24.92%     +29.75 deg
+```
+
+**Low friction alone does almost nothing.** mu 0.25, a sixth of the
+default, moved the error from 0.05% to 0.09%. At 0.35 m/s the wheels
+never demand enough traction to break grip, so uniformly slippery ground
+is not a test of anything. Grip only matters if something asks for it.
+
+**Losing contact is what destroys odometry.** 24 mm bumps produced 25%
+position error and nearly 30 degrees of heading error. The mechanism is
+visible in the path length: the robot covered 4.5 m where the other
+worlds covered 5.9, while the wheels kept turning the whole time. A wheel
+that is turning is not a wheel that is travelling, and an encoder cannot
+tell the difference.
+
+**Differential grip is the one to watch.** mixed_surface is only 0.46% of
+distance, nine times the baseline but still small, yet it is the case
+that produces heading error from a straight-line drive, because wheels on
+the same axle are on different surfaces. Heading error is the one that
+never washes out.
+
+So: use `empty_ground` to check that an estimator is correct, and
+`rough_ground` to check that it survives. A result from the flat world
+says nothing about robustness.
 
 **Error is not the same as drift.** The gz numbers above are from the
 empty world. The same legs run in `sensor_test.sdf` gave 1.94% and +2.29
