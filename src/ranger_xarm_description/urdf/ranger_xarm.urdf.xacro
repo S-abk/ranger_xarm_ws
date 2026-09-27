@@ -80,7 +80,10 @@
     <link name="world"/>
     <joint name="world_to_base_link" type="fixed">
       <parent link="world"/>
-      <child link="base_link"/>
+      <!-- base_footprint is the root now, so the weld goes there. Welding
+           base_link instead would give it two parents and break the tree
+           the same way base_footprint used to be broken. -->
+      <child link="base_footprint"/>
     </joint>
   </xacro:if>
 
@@ -90,22 +93,34 @@
       plugin="$(arg wheels_ros2_control_plugin)"/>
   </xacro:if>
 
-  <!-- Ground-projection reference, and the frame the state estimator
-       localises. ranger_xarm_bringup's EKF is configured with
-       base_link_frame: base_footprint and publish_tf: true, so it owns
-       odom -> base_footprint; nothing else may publish that edge. This
-       link is the other end of it, and while it was commented out the
-       EKF was publishing into a frame that did not exist in simulation.
+  <!-- Ground-projection reference, and the ROOT of the robot.
+       base_footprint is the parent of base_link, not its child. That
+       ordering is not cosmetic, it is what keeps the TF tree legal.
 
-       Massless and geometry-free on purpose. sdformat merges a fixed
-       child like this into base_link during conversion, so it costs gz
-       nothing, and the frame still reaches TF because
-       robot_state_publisher reads the URDF rather than the SDF. -->
+       ranger_xarm_bringup's EKF is configured with base_link_frame:
+       base_footprint and publish_tf: true, so it publishes
+       odom -> base_footprint. If base_footprint were also a child of
+       base_link, as it was when this block was first written, the frame
+       would have two parents: one from the estimator and one from
+       robot_state_publisher. tf2 requires exactly one. The second edge
+       orphans the first, and every lookup that has to cross it fails.
+
+       That failure is close to invisible. The estimator still runs, still
+       publishes, and reports itself healthy; it simply discards every
+       measurement whose frame sits on the wrong side of the break. Here
+       that was the IMU, in os_imu under base_link, so the filter fused
+       wheel velocity happily and never rotated: 138 degrees of real
+       heading change came out as zero, with no warning anywhere outside
+       robot_localization's debug log.
+
+       With base_footprint as the root, the estimator owns
+       odom -> base_footprint, this joint owns base_footprint ->
+       base_link, and nothing is shared. -->
   <link name="base_footprint"/>
-  <joint name="base_to_base_footprint" type="fixed">
-    <parent link="base_link"/>
-    <child link="base_footprint"/>
-    <origin xyz="0 0 ${ground_z_nom}" rpy="0 0 0"/>
+  <joint name="base_footprint_to_base_link" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${-ground_z_nom}" rpy="0 0 0"/>
   </joint>
 
   <xacro:if value="$(arg use_static_geometry)">

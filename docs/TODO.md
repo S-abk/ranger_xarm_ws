@@ -140,61 +140,50 @@ which is what makes it immune to the sim-time trap in
 default) from the loaded figure, or expose it as a parameter if the
 payload varies enough to matter.
 
-## The EKF does not track heading against the simulator
+## Resolved: the EKF heading fault was a two-parent TF tree
 
-Still open. What follows is the evidence and the ruling-out, so the next
-person starts where this stopped rather than at the beginning.
+Kept because the failure mode is worth recognising, not because the bug
+is still open.
 
-Reproducible on a clean single stack (one gz, one RSP, four static
-transform publishers, nothing left over), gz `empty_ground`,
-`sensors:=true`, `odom_tf:=false`:
+`base_footprint` was enabled as a CHILD of `base_link`, while the EKF is
+configured with `base_link_frame: base_footprint` and `publish_tf: true`
+and therefore publishes `odom -> base_footprint`. The frame then had two
+parents. tf2 allows exactly one, so the estimator's edge orphaned
+robot_state_publisher's, and every lookup that had to cross the break
+failed.
+
+The IMU sits in `os_imu`, under `base_link`, on the far side of it.
+`odom0` was unaffected because its `child_frame_id` is already
+`base_footprint`, so it needs no lookup at all. The filter therefore
+fused wheel velocity perfectly and never rotated:
 
 ```
-                  pos err   % of path   yaw err     (path 6.762 m, +138.0 deg)
-wheel odometry     0.007 m     0.11%     +0.17 deg
-EKF (odom+gyro)    6.219 m    91.97%   -147.39 deg
+                  pos err   % path    yaw err
+wheel odometry     0.007 m   0.11%    +0.17 deg
+EKF  (broken)      6.219 m  91.97%  -147.39 deg
+EKF  (fixed)       0.093 m   1.39%    -0.01 deg
 ```
 
-**The mechanism is identified.** With `debug: true` the filter says so
-itself, once per IMU message:
+Fix: `base_footprint` is the ROOT, with `base_link` as its child, which
+is the conventional layout for a mobile base and the one the EKF config
+already assumed. The world weld moved to the root for the same reason.
 
-```
------- RosFilter<T>::prepareTwist (imu0_twist) ------
-Could not transform measurement into base_footprint. Ignoring...
-Did *not* enqueue measurement for imu0_twist_twist
-```
+What made this expensive to find:
 
-Every IMU measurement is discarded at the transform step. `odom0` is
-fused correctly over the same run, so the filter itself works: driven
-straight it reported 1.924 m against ground truth 1.922 m.
+- Nothing reports it. The filter runs, publishes at its configured rate,
+  and its diagnostics say "functioning properly". The discard is visible
+  only with `debug: true`, as "Could not transform measurement into
+  base_footprint. Ignoring...".
+- The transform resolves perfectly from any OTHER process, because the
+  second parent only exists while the estimator is publishing. Every
+  external check said the TF was fine.
+- Half the inputs keep working, so the output looks plausible rather than
+  absent.
 
-**What is NOT the cause**, each checked directly rather than assumed:
-
-- Data. Over a commanded +0.6 rad/s spin: ground truth +0.5937, raw gyro
-  +0.5949, `/ouster/imu_corrected` +0.5886. The measurement is right up
-  to the filter's input.
-- Message format. 953 synthetic IMU messages with a full non-degenerate
-  covariance, correct frame and sim-time stamps produced the same zero.
-- QoS. Publisher and subscriber are both BEST_EFFORT, and the callback
-  demonstrably fires (4464 `imuCallback` entries in the debug log).
-- TF. `base_footprint -> os_imu` resolves to (-0.375, 0, 1.473) and
-  `base_footprint -> base_link` to (0, 0, 0.327), both via a tf2 buffer
-  in a separate process. The chain is entirely static.
-- `tf_timeout`. Raising it from the default 0 to 0.2 changed nothing.
-- Config. `imu0_config[11]` is vyaw, `odom0_config[6,7]` are vx/vy,
-  rejection thresholds are infinite, and vyaw process noise is 0.02.
-- Diagnostics. The filter reports itself as functioning normally and logs
-  no warning at all; the discard is visible only under `debug: true`.
-
-So: a transform that succeeds from outside the filter fails inside it.
-That is where to pick up. Worth instrumenting which exact lookup and at
-which stamp `prepareTwist` is attempting, since the obvious candidates
-are eliminated.
-
-Two cautions. This says nothing about hardware, where the same filter has
-been used and where the frames are supplied by the Ranger driver rather
-than by a simulator. And it only became visible once `/odom` stopped
-being ground truth, which is the point of that change.
+The discriminator that found it, and the one to reach for next time: set
+`base_link_frame` to the frame the sensor already hangs off. If the
+measurement starts being fused, the target frame is the problem, not the
+sensor, the data or the filter.
 
 ## Optional: purge the Ouster metadata from published history
 
