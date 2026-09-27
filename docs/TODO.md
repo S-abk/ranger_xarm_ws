@@ -508,10 +508,64 @@ Smoke-tested with no arguments: the launch loads
 gate power 3, and scores match the gated sweep (rough ground
 2.72 % / 0.90 % and 8.73 % / 1.99 %; flat 0.11 % / 0.17 %).
 
-**Isaac pins the gate off** (`steer_gate_power: 0.0` in
-`ranger_xarm_isaac/launch/control.launch.py`). Isaac also runs the
-controller in velocity mode, and the gate has not been tested there;
-pinning it keeps Isaac's validated behaviour until it is.
+**Isaac keeps the gate off** (`steer_gate_power: 0.0` in
+`ranger_xarm_isaac/launch/control.launch.py`), now on measurement rather
+than caution; see the next section.
+
+### The gate in Isaac: better motion, worse scores, and why
+
+Tested on the regenerated USD (committed defaults: mu 1.2, contact
+offsets unset). Isaac provides the measured steer positions the gate
+needs on `/dynamic_joint_states`.
+
+Physically the gate does its job. Through the crab the base should not
+turn at all; ungated it yaws +2.42 and +2.57 deg, gated +0.40 and +0.36.
+
+The scores go the other way on flat ground, and the reason is in wheel
+odometry, not the gate:
+
+| Isaac flat | wheel odom | EKF |
+| --- | --- | --- |
+| gate off | 0.15 - 0.32 % (heading +/-0.15 deg) | 0.20 - 0.51 % |
+| gate on | 1.24 - 1.35 % (heading ~+2.0 deg) | 0.32 - 0.62 % |
+
+Rough ground, paired from identical starts in fresh sessions: gate off
+3.98 % / 1.94 % and 1.00 % / 0.65 % (wheel / EKF), gate on 3.73 % /
+0.94 % and 0.70 % / 0.63 %. Neutral to slightly better, within what two
+pairs can resolve.
+
+## Open: wheel odometry invents about 1.6 deg of yaw in every crab
+
+Heading change through the crab segment, across both simulators and
+both gate settings:
+
+| | base's actual yaw | wheel-odometry yaw |
+| --- | --- | --- |
+| gz, gate off | -0.28 deg | +1.75 deg |
+| gz, gate on | +1.70 deg | +1.81 deg |
+| Isaac, gate off | +2.42, +2.57 deg | +1.74, +1.76 deg |
+| Isaac, gate on | +0.40, +0.36 deg | +1.43, +1.48 deg |
+
+Whatever the base does -- from -0.3 to +2.6 deg -- wheel odometry reads
+1.4 - 1.8 deg. It is close to insensitive to reality in this segment,
+so the reading is an artifact of the odometry model during the 0 -> 90
+deg steering sweep. When the base happens to scrub by a similar amount
+the two cancel, which is why ungated Isaac and gated gz score well and
+the other two combinations do not. It is also why the gate's genuine
+improvement to Isaac's motion shows up as a worse score.
+
+Candidates, untested: the knuckle sweep rolling the wheel (a steering
+axis that does not pass exactly through the sphere's contact point),
+or steer and wheel samples that are not simultaneous during a fast
+sweep. A first test is to hold the base still, sweep the knuckles
+0 -> 90 deg with the wheels commanded to zero, and see whether wheel
+odometry reports motion. Fixing this should come before judging the
+gate in Isaac again; once odometry stops inventing the crab yaw, the
+gate's reduction in real scrub ought to become a net win.
+
+Also found while testing: `steer_gate_power:=3` on the command line
+crashed the node, because rclpy rejected the integer for a parameter
+declared as a double. It now uses dynamic typing and accepts either.
 
 ### Environment faults (still stand)
 
