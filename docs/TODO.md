@@ -255,96 +255,121 @@ is not blocking anything -- the gyro is still being fused, which is exactly
 what the sub-degree yaw error demonstrates. Worth revisiting only if an
 absolute-position source is added and starts dropping measurements.
 
-## Narrowed: the rough-ground gap is sphere-on-box-edge contact, not configuration
+## Open: the gz clock lags simulation under load, which invalidated the slip evidence
 
-**Repos:** both · **Worlds:** `rough_ground.sdf` and Isaac's
-`--rough-ground`, which generates the same 101 bumps from the same
-constants.
+**Repos:** both · **Worlds:** `rough_ground.sdf`, `rough_rounded.sdf`, and
+Isaac's `--rough-ground`.
 
-The discriminating measurement. Driving straight across the bumps at a
-commanded 0.35 m/s, with the base confirmed on the terrain and moving at
-the commanded ground speed in both:
+### The rounded-bump test, and what it actually showed
 
-| | wheel speed | ground speed | slip |
+`rough_rounded.sdf` is `rough_ground.sdf` with every box replaced by a
+dome -- same 101 positions (both worlds now come from one
+`rough_grid()`), same 24 mm height, same 0.16 m footprint, same mu 1.5,
+no vertical face. It was built to test whether gz's apparent wheel slip
+came from the tyre sphere striking a box edge.
+
+The answer is that there was no slip to explain. Measured dt-free -- total
+wheel rotation times radius, against ground-truth distance over the same
+window -- gz does not slip on either shape:
+
+| gz, straight run at 0.35 m/s | wheels rolled | base travelled | slip |
 | --- | --- | --- | --- |
-| gz (dartsim) | 0.978 m/s | 0.351 m/s | **+178 %** |
-| Isaac (PhysX) | 0.350 m/s | 0.350 m/s | **0 %** |
+| boxes | 2.568 m | 2.562 m | 0.2 % |
+| boxes | 2.582 m | 2.576 m | 0.2 % |
+| domes | 2.506 m | 2.497 m | 0.4 % |
 
-That is the whole gap in one number. On flat ground neither slips (gz
-wheel odometry is 0.10 % of path over 6.7 m), so this is not wheel
-friction in general -- it is what happens when the tyre sphere meets the
-edge of a 24 mm box.
+Isaac, measured the same way, does not slip either.
 
-### Eliminated, each by measurement
+**The previously reported "+178 % gz slip against 0 % in Isaac" was an
+artifact and is withdrawn.** So was the edge hypothesis it motivated.
 
-| candidate | test | result |
-| --- | --- | --- |
-| geometry / collider | same constants, same `<sphere>` from the xacro, radius 0.100036 both | identical |
-| wheel friction | Isaac tyres had no material (PhysX default 0.5); bound 1.2 to match gz | 0.97-4.04 % -> 0.64-4.00 %, no change |
-| physics timestep | Isaac 1/60 s -> 1/240 s | 1.45-3.84 %, no change; path stays 6.55-6.69 m |
-| PhysX contact offset | unset (scene default) -> 0.002 m with rest 0 | 1.08-5.11 %, no change |
-| integrator windup | gz `wheel_ki` 4.0 -> 0 | +178 % -> +164 % slip, no change |
-| drive torque ceiling | -- | ruled out by direction: the gz wheels *overspeed*, they do not stall, so `max_wheel_effort` is not binding |
+### Root cause: the bridged /clock falls behind simulation
 
-The Isaac-side fixes are kept (`--wheel-mu` default 1.2 and
-`--physics-dt` in `urdf_to_usd.py` / `isaac_bringup.py`, plus
-`--wheel-contact-offset`) because the missing friction material was a
-genuine defect, just not this one.
+gz publishes `/clock` once per 1 ms physics step. `ros_gz_bridge` relays
+every one, in order, without dropping any -- and under load it cannot keep
+pace, so ROS time runs progressively slower than simulation time. Over a
+10 s wall window:
 
-### What remains
+| world | `/clock` (bridged) advanced | gz sim advanced | ROS time runs |
+| --- | --- | --- | --- |
+| boxes | 3.905 s | 8.240 s | 2.1x slow |
+| domes | 2.197 s | 8.920 s | 4.1x slow |
 
-Contact generation for a sphere striking a box edge differs between
-dartsim and PhysX, and that is engine-internal rather than something the
-description or the launch configures. The confirmatory test, not yet
-run: regenerate the bumps as rounded solids (cylinders or spheres) so
-there is no edge, and re-measure gz slip. If it collapses toward zero,
-the edge is confirmed as the mechanism and the rough-ground worlds
-should use rounded obstacles on both sides so the two simulators are
-answering the same question.
+Every ROS node on sim time uses that lagging clock: the controller_manager
+stamps joint states with it, and `wheel_odometry.py` divides true wheel
+travel by those compressed intervals, inflating its reported speed by the
+lag factor. The apparent "slip" therefore tracked CPU load, not physics --
++178 % and +78-99 % on the same box world in different runs, +252-290 % on
+domes, which are heavier to simulate. Ground truth and the bridged
+sensors (IMU, lidar) carry gz's own stamps and are unaffected, which is
+why the two disagreed.
 
-Until then the two rough-ground results still bracket an unknown: gz
-pessimistic, Isaac optimistic, and neither validated against the real
-platform.
+### What this does and does not invalidate
 
-### Environment faults that invalidated earlier readings
+- **Wheel-odometry pose is unaffected.** It integrates wheel travel, which
+  needs no dt. Verified: 1056 joint-state messages, no repeated stamps,
+  `/odom` distance 2.589 m against ground truth 2.592 m.
+- **Wheel-odometry twist is inflated** by the lag factor on heavy worlds.
+- **The gz EKF on heavy worlds is compromised.** `odom0_config` fuses
+  only that twist (vx, vy), and the IMU it is fused with is stamped on
+  gz's correct clock while the odometry is stamped on the lagging one.
+  The rough-ground gz EKF figures (8.6-31 %) should be treated as suspect,
+  and the "Detected jump back in time" warnings are likely the same
+  fault. Flat-ground gz EKF (1.39 %) is probably unaffected at the lighter
+  load, but that is not measured.
+- **The gz/Isaac gap in wheel-odometry pose (42-237 % against
+  0.43-4.47 %) is real and still unexplained.** It is not generated on
+  straight segments; it comes from the steered arc and the crab, and
+  mostly as heading error (59-180 deg in gz).
 
-**A Gazebo server survived every teardown for hours.** It kept
-publishing and, because `gz_ros2_control` lives inside the gz process,
-it kept serving a second `/controller_manager` -- which is what returned
-`effort_controllers/JointGroupEffortController` for the wheel controller
-while the live Isaac manager returned `velocity`. Velocity commands
-reaching that phantom effort controller are what threw the base 84 m off
-the bump field. It was missed because teardown patterns had drifted to
-Isaac-only, and because the gz server's `comm` is `ruby`, so
-`ps -eo comm= | grep '^gz$'` reports zero while it is running. Check
-`pgrep -f "gz sim"`, not the process name.
+### Candidate for the remaining gap
 
-**Earlier per-segment gz numbers were taken with that second server
-running and should not be trusted.** In particular a reading of 0 % slip
-on the gz straight segment contradicts the +178 % measured here on a
-verified-clean stack.
+The two sides do not drive the wheels the same way. Isaac uses an exact
+velocity drive. gz runs `ranger_4wis_controller.py`'s PI speed loop
+(`wheel_kp` 1.5, `wheel_ki` 4.0, `max_wheel_effort` 30) -- on the lagging
+clock, so its integrator's dt is 2-4x too small. On a straight all four
+wheels want the same speed and the loop's accuracy barely matters. In an
+arc the inner and outer wheels need different speeds matched to the steer
+geometry; if the loop tracks them poorly the wheels fight, the base
+scrubs, and the least-squares heading goes wrong. Test: log commanded
+against actual wheel speed per corner, and `wheel_odometry`'s
+least-squares residual, through an arc on rough ground.
 
-**Stale Fast DDS shared memory compounds it.** Every `kill -9` leaves a
-segment in `/dev/shm`; 280 had accumulated. Clear
-`/dev/shm/fastrtps_*` and `/dev/shm/sem.fastrtps_*` between runs.
+### Fixing the clock
 
-**An earlier claim that the Isaac control bridge cannot run above 60 Hz
-is withdrawn** -- it spawns and runs fine at 240 Hz once the environment
-is clean.
+Not done yet. Options: bridge `/clock` with a keep-last-1 QoS so a slow
+consumer drops stale ticks instead of backlogging; have gz publish clock
+at a lower rate than the physics step; or reduce load (the lag is
+worst with rendering sensors on). Whatever is chosen, re-run the gz EKF
+rough-ground scores afterwards -- the ones in this file predate it.
 
-**Validate before scoring, and gate on ground truth, not on the wheels.**
-Check the base is inside the bump field and that *ground-truth* speed
-matches the command. Gating on wheel speed rejects exactly the gz runs
-worth measuring, because wheel slip is the phenomenon.
+### Also noted, not fixed
 
-**`grep` is unreliable on a USD crate file** -- the token table is
-compressed, so an authored material can read as absent. Use a `pxr`
-probe.
+`wheel_odometry.py` consumes each wheel position before its `dt <= 0`
+early return, so a message with a repeated stamp would silently discard
+that step's travel. Measured not to fire (0 repeats in 1056), but it
+should integrate pose regardless and skip only the twist.
 
-**An earlier claim that gz strikes the bumps 5-8x harder in vertical
-acceleration was confounded** -- the gz IMU runs at 100 Hz and Isaac's at
-about 34 Hz with the render tick, so the standard deviations covered
-different bandwidths.
+The per-segment "truth vx/vy" decomposition used in earlier probes
+rotates ground-truth twist by ground-truth yaw, i.e. assumes it is
+world-frame. That is unverified for either simulator; if either publishes
+body-frame twist, the arc and crab slide figures are wrong. Rely on
+distance and heading, which are frame-free.
+
+### Eliminated earlier (still stands)
+
+Geometry and collider identical; Isaac wheel friction 0.5 -> 1.2 no effect;
+Isaac timestep 1/60 -> 1/240 s no effect; PhysX contact offset default ->
+2 mm no effect.
+
+### Environment faults (still stand)
+
+A Gazebo server survived teardown for hours and served a second
+`/controller_manager` from its in-process `gz_ros2_control` -- check
+`pgrep -f "gz sim"`, since its process name is `ruby`. Stale Fast DDS
+segments in `/dev/shm` compound it; clear them between runs. `grep` is
+unreliable on USD crate files. The earlier 5-8x vertical-acceleration
+comparison was confounded by mismatched IMU rates.
 
 ## Watch: the non-finite guard in wheel_odometry.py is untested in anger
 
