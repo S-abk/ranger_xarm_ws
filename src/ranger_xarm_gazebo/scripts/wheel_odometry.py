@@ -113,6 +113,7 @@ class WheelOdometry(Node):
         self.last_wheel = {}
         self.last_stamp = None
         self.residual = 0.0
+        self.n_nonfinite = 0
 
         self.pub = self.create_publisher(
             Odometry, self.get_parameter('odom_topic').value, 10)
@@ -141,6 +142,17 @@ class WheelOdometry(Node):
             a = self._iface(msg, f'{c}_steer_joint', 'position')
             w = self._iface(msg, f'{c}_wheel_joint', 'position')
             if a is None or w is None:
+                return
+            # PhysX can emit a non-finite joint value for a frame or two
+            # while the base is settling onto uneven ground at spawn. One
+            # such sample used to poison the integrator permanently: NaN
+            # compares false against every bound, so it passes the wrap
+            # loop untouched, lands in the least squares, and from then on
+            # x, y and yaw are all NaN with nothing logged. Drop the
+            # sample instead; a dropped frame costs one step of travel,
+            # a poisoned state costs the whole run.
+            if not (math.isfinite(a) and math.isfinite(w)):
+                self._warn_nonfinite(c)
                 return
             steer[c] = a
             prev = self.last_wheel.get(c)
@@ -181,12 +193,28 @@ class WheelOdometry(Node):
         # start heading: over a curved step the start-heading form biases
         # the path to the outside of every turn, and that bias accumulates
         # in one direction instead of averaging out.
+        if not (math.isfinite(dx_b) and math.isfinite(dy_b)
+                and math.isfinite(dyaw)):
+            # Finite inputs can still solve to a non-finite twist if the
+            # geometry degenerates. Same reasoning as above: refuse the
+            # step rather than carry it into the state.
+            self._warn_nonfinite('least-squares twist')
+            return
+
         mid = self.yaw + 0.5 * dyaw
         self.x += dx_b * math.cos(mid) - dy_b * math.sin(mid)
         self.y += dx_b * math.sin(mid) + dy_b * math.cos(mid)
         self.yaw = math.atan2(math.sin(self.yaw + dyaw), math.cos(self.yaw + dyaw))
 
         self._publish(msg.header.stamp, dx_b / dt, dy_b / dt, dyaw / dt)
+
+    def _warn_nonfinite(self, where):
+        self.n_nonfinite += 1
+        # Throttled: if it is happening it tends to happen every frame,
+        # and the useful information is that it happened at all.
+        self.get_logger().warn(
+            f'non-finite joint data from {where}; dropping the sample '
+            f'({self.n_nonfinite} so far)', throttle_duration_sec=5.0)
 
     def _publish(self, stamp, vx, vy, wz):
         qz, qw = math.sin(self.yaw / 2.0), math.cos(self.yaw / 2.0)
