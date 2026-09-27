@@ -255,101 +255,96 @@ is not blocking anything -- the gyro is still being fused, which is exactly
 what the sub-degree yaw error demonstrates. Worth revisiting only if an
 absolute-position source is added and starts dropping measurements.
 
-## Open: the two simulators disagree on rough ground; both candidate causes eliminated
+## Narrowed: the rough-ground gap is sphere-on-box-edge contact, not configuration
 
 **Repos:** both · **Worlds:** `rough_ground.sdf` and Isaac's
 `--rough-ground`, which generates the same 101 bumps from the same
 constants.
 
-| | wheel odometry | EKF |
+The discriminating measurement. Driving straight across the bumps at a
+commanded 0.35 m/s, with the base confirmed on the terrain and moving at
+the commanded ground speed in both:
+
+| | wheel speed | ground speed | slip |
+| --- | --- | --- | --- |
+| gz (dartsim) | 0.978 m/s | 0.351 m/s | **+178 %** |
+| Isaac (PhysX) | 0.350 m/s | 0.350 m/s | **0 %** |
+
+That is the whole gap in one number. On flat ground neither slips (gz
+wheel odometry is 0.10 % of path over 6.7 m), so this is not wheel
+friction in general -- it is what happens when the tyre sphere meets the
+edge of a 24 mm box.
+
+### Eliminated, each by measurement
+
+| candidate | test | result |
 | --- | --- | --- |
-| gz (dartsim) | 42 - 237 % | 8.6 - 31 % |
-| Isaac (PhysX) | 0.43 - 4.47 % | 0.54 - 2.89 % |
+| geometry / collider | same constants, same `<sphere>` from the xacro, radius 0.100036 both | identical |
+| wheel friction | Isaac tyres had no material (PhysX default 0.5); bound 1.2 to match gz | 0.97-4.04 % -> 0.64-4.00 %, no change |
+| physics timestep | Isaac 1/60 s -> 1/240 s | 1.45-3.84 %, no change; path stays 6.55-6.69 m |
+| PhysX contact offset | unset (scene default) -> 0.002 m with rest 0 | 1.08-5.11 %, no change |
+| integrator windup | gz `wheel_ki` 4.0 -> 0 | +178 % -> +164 % slip, no change |
+| drive torque ceiling | -- | ruled out by direction: the gz wheels *overspeed*, they do not stall, so `max_wheel_effort` is not binding |
 
-### Ruled out by measurement
+The Isaac-side fixes are kept (`--wheel-mu` default 1.2 and
+`--physics-dt` in `urdf_to_usd.py` / `isaac_bringup.py`, plus
+`--wheel-contact-offset`) because the missing friction material was a
+genuine defect, just not this one.
 
-**Geometry and collider.** Identical by construction (same constants,
-both report 101 bumps). Both take the same
-`<sphere radius="${wheel_radius}"/>` from `ranger_wheels.xacro`; the
-Isaac import lands it at `/colliders/*_wheel_link/*_tyre/sphere` at
-radius 0.100036.
+### What remains
 
-**Wheel friction.** The Isaac tyres had no physics material and were on
-PhysX's default 0.5 against gz's 1.2. Binding 1.2 changes nothing:
+Contact generation for a sphere striking a box edge differs between
+dartsim and PhysX, and that is engine-internal rather than something the
+description or the launch configures. The confirmatory test, not yet
+run: regenerate the bumps as rounded solids (cylinders or spheres) so
+there is no edge, and re-measure gz slip. If it collapses toward zero,
+the edge is confirmed as the mechanism and the rough-ground worlds
+should use rounded obstacles on both sides so the two simulators are
+answering the same question.
 
-| Isaac wheel odometry | range over 3 trials |
-| --- | --- |
-| PhysX default, mu 0.5 | 0.97 - 4.04 % |
-| gz-matched, mu 1.2 | 0.64 - 4.00 % |
+Until then the two rough-ground results still bracket an unknown: gz
+pessimistic, Isaac optimistic, and neither validated against the real
+platform.
 
-**Physics timestep.** Isaac defaults to 1/60 s against the gz worlds'
-1 ms. Running Isaac at 1/240 s -- 4x finer -- also changes nothing:
-1.45 - 3.84 %, and the ground-truth path stays at 6.55 - 6.69 m rather
-than collapsing to the 4.5 - 5.6 m gz produces.
+### Environment faults that invalidated earlier readings
 
-The fix and the control for each are kept (`--wheel-mu`, default 1.2,
-in `urdf_to_usd.py`; `--physics-dt` in `isaac_bringup.py`) because both
-were real defects in the Isaac setup even though neither explains the
-gap.
+**A Gazebo server survived every teardown for hours.** It kept
+publishing and, because `gz_ros2_control` lives inside the gz process,
+it kept serving a second `/controller_manager` -- which is what returned
+`effort_controllers/JointGroupEffortController` for the wheel controller
+while the live Isaac manager returned `velocity`. Velocity commands
+reaching that phantom effort controller are what threw the base 84 m off
+the bump field. It was missed because teardown patterns had drifted to
+Isaac-only, and because the gz server's `comm` is `ruby`, so
+`ps -eo comm= | grep '^gz$'` reports zero while it is running. Check
+`pgrep -f "gz sim"`, not the process name.
 
-### What the evidence now points at
+**Earlier per-segment gz numbers were taken with that second server
+running and should not be trusted.** In particular a reading of 0 % slip
+on the gz straight segment contradicts the +178 % measured here on a
+verified-clean stack.
 
-The failure mode is the same in both -- straight driving is exact
-(0.350 m/s against 0.350) and all error is generated in the steered arc
-and the crab -- but the consequence is not. In gz the platform bogs
-down, shortening the ground-truth path from 6.7 m to 4.5 - 5.6 m. In
-Isaac it barely slows. The wheels are turning in both cases, so this is
-slip at the contact rather than a stalled drive.
+**Stale Fast DDS shared memory compounds it.** Every `kill -9` leaves a
+segment in `/dev/shm`; 280 had accumulated. Clear
+`/dev/shm/fastrtps_*` and `/dev/shm/sem.fastrtps_*` between runs.
 
-Two untested differences remain, in order of suspicion:
+**An earlier claim that the Isaac control bridge cannot run above 60 Hz
+is withdrawn** -- it spawns and runs fine at 240 Hz once the environment
+is clean.
 
-1. **PhysX contact offset.** The tyre spheres leave `contactOffset` and
-   `restOffset` unset, so they take the scene default, nominally 0.02 m
-   -- comparable to the 24 mm bump height. Contacts are generated early
-   and persist, which plausibly makes the bump behave as a softer,
-   more continuous feature than dartsim's strict rigid contact. Testable
-   by authoring a small offset (0.002) on the spheres and re-scoring.
-2. **The wheel controller is not the same on the two sides.**
-   `effort_controllers/JointGroupEffortController` in gz,
-   `velocity_controllers/JointGroupVelocityController` in Isaac, where
-   the underlying drive also has damping 1e3. A near-ideal velocity
-   source responds to a bump very differently from a torque source. This
-   is deliberate -- Isaac drives wheels from a velocity drive -- but it
-   means the two platforms are not only different physics engines.
+**Validate before scoring, and gate on ground truth, not on the wheels.**
+Check the base is inside the bump field and that *ground-truth* speed
+matches the command. Gating on wheel speed rejects exactly the gz runs
+worth measuring, because wheel slip is the phenomenon.
 
-### Method notes that cost hours
+**`grep` is unreliable on a USD crate file** -- the token table is
+compressed, so an authored material can read as absent. Use a `pxr`
+probe.
 
-**Clear `/dev/shm` between runs.** Every `kill -9` on a ROS node leaves a
-Fast DDS shared-memory segment behind; 280 had accumulated. They serve
-ghost `controller_manager` endpoints, and the symptoms do not look like
-stale discovery: `list_controllers` returned `velocity` and `effort` for
-the same controller on consecutive calls, spawners were told "controller
-already loaded" by a dead manager while the live one answered "no
-controller with this name exists", and velocity commands reached a
-phantom effort controller and threw the base 84 m off the bump field.
-That was misdiagnosed three times -- as two live managers, as the
-timestep destabilising the control bridge, and as the friction material
-breaking the physics -- before the segments were found. After
-`rm /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*`, spawners succeeded
-first try at both 60 Hz and 240 Hz. **The earlier claim that the control
-bridge cannot run above 60 Hz was wrong and is withdrawn**; it was this.
-
-**Validate before scoring.** `reset_pose.sh` has no Isaac equivalent, and
-a run can look plausible while the base is nowhere near the terrain.
-Check the ground-truth pose is inside the bump field *and* that wheels
-and truth both read ~0.350 m/s on a straight segment, and refuse to
-score otherwise.
-
-**`grep` is not reliable on a USD crate file.** The token table is
-compressed, so a material that is present can read as absent. Use a
-`pxr` probe.
-
-**An earlier reading here claimed gz strikes the bumps 5-8x harder in
-vertical acceleration. That was confounded** -- the gz IMU runs at
-100 Hz and Isaac's at about 34 Hz with the render tick, so the standard
-deviations were taken over different bandwidths and the lower rate
-aliases away the peaks being measured. Match sensor rates before
-comparing ride harshness.
+**An earlier claim that gz strikes the bumps 5-8x harder in vertical
+acceleration was confounded** -- the gz IMU runs at 100 Hz and Isaac's at
+about 34 Hz with the render tick, so the standard deviations covered
+different bandwidths.
 
 ## Watch: the non-finite guard in wheel_odometry.py is untested in anger
 
