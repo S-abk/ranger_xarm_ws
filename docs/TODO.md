@@ -534,34 +534,55 @@ Rough ground, paired from identical starts in fresh sessions: gate off
 0.94 % and 0.70 % / 0.63 %. Neutral to slightly better, within what two
 pairs can resolve.
 
-## Open: wheel odometry invents about 1.6 deg of yaw in every crab
+## Found: the crab yaw is wheel slip during the knuckle sweep, caused by the 4WIS controller
 
-Heading change through the crab segment, across both simulators and
-both gate settings:
+It is not an odometry-model error. Driving the steer and wheel
+controllers directly (`crab_probe.py`), wheel odometry is exact: a
+knuckle sweep with the wheels held produces 0.00 deg, a steady crab at a
+held 90 deg +0.02 deg against truth, and the stop -0.02 deg. The knuckle
+geometry rules out steering-induced rolling too: the steer axis is
+vertical through the wheel centre and the tyre sphere is centred there,
+so the contact point sits on the steer axis.
 
-| | base's actual yaw | wheel-odometry yaw |
-| --- | --- | --- |
-| gz, gate off | -0.28 deg | +1.75 deg |
-| gz, gate on | +1.70 deg | +1.81 deg |
-| Isaac, gate off | +2.42, +2.57 deg | +1.74, +1.76 deg |
-| Isaac, gate on | +0.40, +0.36 deg | +1.43, +1.48 deg |
+The error appears only when `ranger_4wis_controller.py` runs the
+transition. `crab_timeline.py` reproduces the scored drive's arc -> stop
+-> crab and splits the crab at the moment all four knuckles are within
+1 deg of 90:
 
-Whatever the base does -- from -0.3 to +2.6 deg -- wheel odometry reads
-1.4 - 1.8 deg. It is close to insensitive to reality in this segment,
-so the reading is an artifact of the odometry model during the 0 -> 90
-deg steering sweep. When the base happens to scrub by a similar amount
-the two cancel, which is why ungated Isaac and gated gz score well and
-the other two combinations do not. It is also why the gate's genuine
-improvement to Isaac's motion shows up as a worse score.
+| configuration | sweep: odom / truth / error | steady crab error | stop error |
+| --- | --- | --- | --- |
+| gz, gate on | +1.86 / +1.84 / +0.03 | -0.01 | -0.06 |
+| gz, gate off | +1.85 / +0.36 / **+1.49** | -0.00 | -0.06 |
+| Isaac, gate on | +1.35 / +0.22 / **+1.13** | +0.08 | -0.03 |
 
-Candidates, untested: the knuckle sweep rolling the wheel (a steering
-axis that does not pass exactly through the sphere's contact point),
-or steer and wheel samples that are not simultaneous during a fast
-sweep. A first test is to hold the base still, sweep the knuckles
-0 -> 90 deg with the wheels commanded to zero, and see whether wheel
-odometry reports motion. Fixing this should come before judging the
-gate in Isaac again; once odometry stops inventing the crab yaw, the
-gate's reduction in real scrub ought to become a net win.
+Every bit of the error arises in the ~0.4 s sweep. Before the crab the
+knuckles still hold the arc's angles, and every wheel then targets +90
+deg, so the front knuckles swing 66-75 deg and the rear ones 105-114.
+During that swing the wheels are driven in mutually inconsistent
+directions: ungated, all four run at full speed from the first instant
+at whatever angle they happen to be at; with the per-wheel gate, each
+wheel waits only for its OWN knuckle, so the fronts are driving
+(0.13-0.22 m/s) while the rears are still near zero. Either way the
+wheels' motion implies 1.4-1.9 deg of yaw, which is what wheel odometry
+integrates. How much of that the base actually does depends on how each
+engine resolves the conflicting tyre forces -- from 0.2 deg (Isaac, gated)
+to 1.8 deg (gz, gated). The rest is slip, which wheel odometry cannot
+observe.
+
+That explains every row of the earlier cross-simulator table, including
+why the gate "made Isaac worse": it reduced Isaac's real scrub but left
+the wheels' implied yaw in place.
+
+### The fix to try
+
+Gate all four wheels on the WORST knuckle's error rather than each on
+its own, so no wheel drives until every knuckle has nearly converged and
+they then ramp together; the wheel set stays consistent with one body
+twist throughout. Optionally, pick each knuckle's shorter way round (the
+rear knuckles can reach -90 deg with the wheel reversed, a 66-75 deg
+swing instead of 105-114), which makes the sweeps symmetric and shorter.
+The prediction is that sweep yaw goes to ~0 in both odometry and truth,
+in both simulators. Then re-score, and re-judge the gate in Isaac.
 
 Also found while testing: `steer_gate_power:=3` on the command line
 crashed the node, because rclpy rejected the integer for a parameter
