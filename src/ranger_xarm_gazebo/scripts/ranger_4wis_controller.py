@@ -39,6 +39,7 @@ sideways.
 import math
 
 import rclpy
+from rcl_interfaces.msg import ParameterDescriptor
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from control_msgs.msg import DynamicJointState
@@ -73,7 +74,10 @@ class Ranger4WIS(Node):
         # which still lets a wheel 45 deg off target drive at 70 %; measured,
         # it cut that crab error only to +0.79 deg. Power 3 cut it to
         # +0.11 deg. 0 disables the gate.
-        self.declare_parameter('steer_gate_power', 3.0)
+        # dynamic_typing so steer_gate_power:=3 works as well as :=3.0;
+        # without it rclpy rejects the integer and the node exits.
+        self.declare_parameter('steer_gate_power', 3.0,
+                               ParameterDescriptor(dynamic_typing=True))
         # 'effort' closes the speed loop here and sends torque. 'velocity'
         # sends the wheel speed straight through to a simulator whose joint
         # velocity drive is a torque-limited actuator, which then closes the
