@@ -321,7 +321,7 @@ domes (0.4 %). `rough_rounded.sdf` stays in the tree as a same-grid,
 edgeless variant. Eliminated as causes of the gz/Isaac gap: geometry and
 collider, Isaac wheel friction, Isaac timestep, PhysX contact offset.
 
-## Diagnosed: gz under-rotates in arcs because its wheel speed loop is too soft
+## Diagnosed and fixed on rough ground: gz under-rotated in arcs because its wheel speed loop was too soft
 
 **Probe:** `arc_probe.py` drives 6 s straight onto the terrain, then holds
 the scored arc (vx 0.30 m/s, wz 0.40 rad/s) and logs, per corner, target
@@ -377,24 +377,81 @@ limits how stiff it can be. Whether the chatter is inherent to that
 latency or excited by the bumps has not been tested (it would show up on
 flat ground at 5x if inherent).
 
-### The fix to try: a velocity drive in gz, as in Isaac
+### The velocity drive: tried, and it closes the gap
 
-gz drives the wheels by torque because under bullet-featherstone a
-velocity command became a rigid motor constraint that over-determined the
-chassis and stopped it yawing (see the effort comment in
-`ranger_wheels.xacro`). The project has since moved to dartsim for exactly
-that class of problem, and that comment still reasons from bullet. On
-dartsim a joint velocity command with the URDF effort limit behaves as a
-torque-limited speed source, which is what Isaac uses and what the
-real platform's motor controllers do.
+`sim.launch.py wheel_drive:=velocity` (default still `effort`) sends wheel
+speeds to dartsim's own joint velocity drive, capped by the 60 N m joint
+effort limit, instead of closing a PI loop over DDS. The controller and
+xacro pieces now match on both branches: `command_mode` in
+`ranger_4wis_controller.py`, `wheels_command_interface` in the xacro,
+both defaulting to effort, and the expanded default URDF is byte-identical
+to before.
 
-The pieces exist, but only on the isaac branch: the xacro's
-`wheels_command_interface` argument, and a `command_mode` (effort or
-velocity) in that branch's `ranger_4wis_controller.py`. The public
-branch has neither, so the two copies of the controller have diverged
-and should be reconciled first. Then verify on dartsim that a commanded
-spin in place produces its full yaw -- the exact failure the xacro
-comment describes -- before rerunning the arc probe and the sweep.
+**The rigid-constraint failure does not occur on dartsim.** A commanded
+spin in place yields 100 % of its yaw rate (170 deg against 172; the gap
+is the ramp-up), where bullet-featherstone gave under 10 %.
+
+Arc on rough ground, `arc_probe.py`:
+
+| | effort, stock | effort, 5x gains | velocity drive |
+| --- | --- | --- | --- |
+| wheel speed error | -27 to +4 % | -4 to +9 % (chattering) | 0 % |
+| wheel fit residual | 0.09 m/s | 0.49 m/s | 0.0005 - 0.001 m/s |
+| yaw rate vs command | 59 % | 98 % | 98 % |
+| heading over the arc | 83 deg | 132 deg | 134 - 135 deg of 137.5 |
+
+Four-surface sweep, five trials each, 0 clock warnings, velocity
+controller and velocity mode confirmed on every world:
+
+| surface | effort: wheel odom / EKF | velocity: wheel odom / EKF |
+| --- | --- | --- |
+| `empty_ground` | 0.10 - 0.11 % / 0.09 - 0.14 % | 1.04 - 1.10 % / 0.14 - 0.20 % |
+| `low_friction` | 0.42 - 0.45 % / 0.08 - 0.09 % | 0.38 - 0.40 % / 0.43 - 0.45 % |
+| `mixed_surface` | 2.2 - 3.9 % / 1.9 - 3.2 %, 1 of 5 failed | 1.2 - 2.7 % / 0.11 - 0.64 %, **3 of 5 failed** |
+| `rough_ground` | 22.9 - 47.0 % / 12.2 - 27.8 % | **3.5 - 8.4 % / 0.77 - 1.84 %** |
+
+Rough ground is now comparable to Isaac (0.43 - 4.47 % / 0.54 - 2.89 %),
+with net heading 125 - 136 deg instead of about 66. **The gz/Isaac
+rough-ground gap was the drive.**
+
+### Why the default stays effort: transition scrub
+
+The velocity drive regresses elsewhere. On flat ground wheel odometry
+carries a constant +1.33 deg heading error in every trial. Per segment,
+heading being frame-free:
+
+| segment | truth | wheel odom | error |
+| --- | --- | --- | --- |
+| straight | -0.00 | -0.00 | +0.00 |
+| arc | +137.24 | +136.63 | -0.61 |
+| crab | -0.28 | +1.75 | **+2.03** |
+| straight | +0.17 | +0.07 | -0.09 |
+
+It comes from the transitions, mostly into the crab, where the knuckles
+sweep 0 -> 90 deg. A stiff velocity servo spins the wheels at full speed
+throughout, so they push the base while still pointing the wrong way; the
+base yaws slightly and the wheel kinematics, read from the measured steer
+angles, stop agreeing. The effort loop's soft ramp-up had masked this.
+
+The `mixed_surface` failures look related but are not diagnosed: three
+of five trials came out deterministically identical (5.73 m path, +48 deg
+net heading against +134, wheel odometry 49 %, EKF 24.6 %), a bimodal
+outcome depending on small differences in how the base meets the 8 mm
+low-grip patches. The effort drive had one such failure in five.
+
+The `low_friction` EKF moving from 0.08 % to 0.44 %, now slightly worse
+than wheel odometry, is also unexplained.
+
+### Next: gate wheel speed on steering convergence
+
+The standard 4WIS remedy: in velocity mode, scale each wheel's commanded
+speed by how close its knuckle is to its target angle, e.g. by
+max(0, cos(steer error)), so a wheel does not drive while it is still
+turning. `ranger_4wis_controller.py` already subscribes to
+`/dynamic_joint_states` and can read the steer positions there. Then
+re-run the flat segment breakdown, the mixed-surface sweep, and the
+rough-ground sweep; if the regressions go and rough ground holds, make
+`velocity` the gz default.
 
 ### Environment faults (still stand)
 
