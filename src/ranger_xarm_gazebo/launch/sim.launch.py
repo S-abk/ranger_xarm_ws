@@ -429,13 +429,15 @@ def generate_launch_description():
                         'default: each rendering sensor costs a render pass '
                         'every frame.'),
         DeclareLaunchArgument(
-            'wheel_drive', default_value='effort',
-            description='How the wheels are driven. effort: torque, with the '
-                        'speed loop closed in ranger_4wis_controller.py over '
-                        'DDS. velocity: a speed target for dartsim\'s own '
-                        'torque-limited joint drive, as Isaac does. The '
-                        'effort loop is too soft to hold wheel speeds on rough '
-                        'ground, which is why the base under-turns there.'),
+            'wheel_drive', default_value='velocity',
+            description='How the wheels are driven. velocity (default): a '
+                        'speed target for dartsim\'s own torque-limited joint '
+                        'drive, gated on steering convergence, as Isaac does. '
+                        'effort: torque, with the speed loop closed in '
+                        'ranger_4wis_controller.py over DDS; too soft to hold '
+                        'wheel speeds on rough ground, where the base turned '
+                        '59 % of a commanded arc, but slightly better on '
+                        'low_friction. See docs/TODO.md.'),
         DeclareLaunchArgument(
             'drive_base', default_value='false',
             description='Add the 4WIS wheels and drive the base from '

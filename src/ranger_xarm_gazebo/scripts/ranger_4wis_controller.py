@@ -87,8 +87,11 @@ class Ranger4WIS(Node):
         # rough ground the stock gains let wheel speeds sag up to 27 % and
         # the base turned 59 % of a commanded arc, and any gain high enough
         # to hold the speeds chatters between the effort clamps. sim.launch.py's
-        # wheel_drive argument selects between the two on the gz side.
-        self.declare_parameter('command_mode', 'effort')
+        # wheel_drive argument selects between the two on the gz side, and
+        # defaults to velocity. So does this: the gz launch and Isaac both
+        # pass the mode explicitly, and a node restarted by hand without it
+        # should not send PI torques to what is now a velocity controller.
+        self.declare_parameter('command_mode', 'velocity')
 
         self.r = self.get_parameter('wheel_radius').value
         lx = self.get_parameter('half_wheelbase').value
