@@ -688,6 +688,51 @@ its wheel odometry's. They predate the limit and match the earlier
 observation that Isaac's IMU publishes at ~34 Hz with the render tick;
 integrating a gyro that slowly loses yaw. Not a controller issue.
 
+### The crab residual: rear knuckles arriving late
+
+With the common gate at power 3 and the acceleration limit, a small
+error was left in the crab (+0.24 deg on `low_friction` over the whole
+segment). `crab_timeline.py` puts all of it in the ~0.4 s sweep. Entering
+a crab from an arc, the rear knuckles swing 105-114 deg against the
+fronts' 66-75, so at t = 0.2 s the fronts are within 5-6 deg of 90 and
+the rears still 18-24 deg off -- and power 3 lets the wheels drive at
+76 % of the gated speed at 24 deg. The base really turns, and wheel
+odometry, reading the measured angles, misses it.
+
+| sweep into the crab | base's real turn | odometry error |
+| --- | --- | --- |
+| gz flat, power 3 (default) | +0.21 / +0.22 deg | -0.16 / -0.17 deg |
+| gz flat, power 10 | +0.07 | -0.06 |
+| gz `low_friction`, power 3 | +0.16 | -0.11 |
+| gz `low_friction`, power 10 | +0.04 | -0.03 |
+
+Full scored drive on `low_friction`: crab segment +0.24 -> +0.12 deg,
+drive total +0.30 -> +0.18 deg. A sharper gate cuts the residual three-
+to fourfold. The cost is a slower start into any steered transition --
+the wheels reach speed about 0.1 s later -- and power 10 also slows arc
+entries (a 24 deg steer change gates to 0.40 instead of 0.76). It is
+**not** the default: it would need the four-surface sweep and the Isaac
+checks rerun first.
+
+**Shortest-path steering was tried and rejected.** Letting each knuckle
+reach +/-90 from whichever side is nearer (the rears go to -90 with the
+wheel reversed) makes the sweeps symmetric, 66-75 deg each, but it is
+worse: the base turns -0.38 deg at power 3 and -0.19 at power 10, with
+odometry reading exactly 0.00. Mid-sweep the front wheels push slightly
+forward and the reversed rears slightly back, so each side fights
+fore-and-aft; no rigid-body motion matches that, so odometry fits "no
+turn", while the unequal front/rear tyre forces (the arm loads one end
+more) turn the base anyway. Removed rather than left as a switch.
+
+What remains at power 10 (~0.1 deg on `low_friction` in the full drive)
+has a different signature -- odometry 0.00, truth -0.12 -- so it is not
+wheels driving early. One untested candidate: all four knuckles swing
+the same way into the crab, and their combined reaction torque twists
+the chassis, which yields most on low grip.
+
+`crab_timeline.py` now treats a knuckle at -90 as converged, so it
+reads correctly with any steering scheme.
+
 Also found while testing: `steer_gate_power:=3` on the command line
 crashed the node, because rclpy rejected the integer for a parameter
 declared as a double. It now uses dynamic typing and accepts either.
