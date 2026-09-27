@@ -51,6 +51,7 @@ def launch_setup(context, *args, **kwargs):
     add_gripper = LaunchConfiguration('add_gripper').perform(context)
     drive_base = LaunchConfiguration('drive_base').perform(context).lower() in ('true', '1', 'yes')
     sensors = LaunchConfiguration('sensors').perform(context).lower() in ('true', '1', 'yes')
+    odom_tf = LaunchConfiguration('odom_tf').perform(context).lower() in ('true', '1', 'yes')
     prefix = 'xarm_'
 
     # The upstream controller config is written for a bare arm. This rewrites
@@ -236,7 +237,8 @@ def launch_setup(context, *args, **kwargs):
     # /ground_truth/odom, so the two can be compared rather than confused.
     odometry = Node(
         package='ranger_xarm_gazebo', executable='wheel_odometry.py',
-        output='screen', parameters=[{'use_sim_time': True}],
+        output='screen',
+        parameters=[{'use_sim_time': True, 'publish_tf': odom_tf}],
     )
 
     # Sensor bridges and the sensor-internal frames.
@@ -395,6 +397,13 @@ def generate_launch_description():
         DeclareLaunchArgument('add_gripper', default_value='true',
                               description='Include the xArm gripper.'),
         DeclareLaunchArgument('start_rviz', default_value='false'),
+        DeclareLaunchArgument(
+            'odom_tf', default_value='true',
+            description='Let wheel odometry publish odom -> base_footprint. '
+                        'Set false when running the EKF, which is configured '
+                        'with publish_tf: true and owns that edge. Two '
+                        'publishers on one edge is not reported as an error; '
+                        'TF simply returns whichever arrived last.'),
         DeclareLaunchArgument(
             'sensors', default_value='false',
             description='Simulate the lidars, IMU and camera, and bridge '

@@ -90,15 +90,23 @@
       plugin="$(arg wheels_ros2_control_plugin)"/>
   </xacro:if>
 
-  <!-- Ground-projection reference. Kept as a child of base_link so the
-       Ranger odometry publisher can later own odom -> base_link without a
-       competing TF parent. -->
-  <!-- <link name="base_footprint"/>
+  <!-- Ground-projection reference, and the frame the state estimator
+       localises. ranger_xarm_bringup's EKF is configured with
+       base_link_frame: base_footprint and publish_tf: true, so it owns
+       odom -> base_footprint; nothing else may publish that edge. This
+       link is the other end of it, and while it was commented out the
+       EKF was publishing into a frame that did not exist in simulation.
+
+       Massless and geometry-free on purpose. sdformat merges a fixed
+       child like this into base_link during conversion, so it costs gz
+       nothing, and the frame still reaches TF because
+       robot_state_publisher reads the URDF rather than the SDF. -->
+  <link name="base_footprint"/>
   <joint name="base_to_base_footprint" type="fixed">
     <parent link="base_link"/>
     <child link="base_footprint"/>
     <origin xyz="0 0 ${ground_z_nom}" rpy="0 0 0"/>
-  </joint> -->
+  </joint>
 
   <xacro:if value="$(arg use_static_geometry)">
     <xacro:ranger_static_geometry parent="base_link" use_collision="$(arg use_static_collision)"

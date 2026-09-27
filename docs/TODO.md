@@ -140,6 +140,63 @@ which is what makes it immune to the sim-time trap in
 default) from the loaded figure, or expose it as a parameter if the
 payload varies enough to matter.
 
+## The EKF does not track heading against the simulator
+
+Not a verdict on the EKF. A record of where the investigation stopped, so
+the next person does not repeat the ruling-out.
+
+Symptom: with gz on `empty_ground`, `sensors:=true`, `odom_tf:=false` and
+`ranger_xarm_bringup/ekf_odom_imu.launch.py use_sim_time:=true`, over a
+drive with 138.0 deg of real rotation:
+
+```
+wheel odometry    0.007 m   0.11% of path    +0.17 deg
+EKF (odom+gyro)   5.799 m  86.76% of path  -138.00 deg
+```
+
+The EKF's orientation stays exactly identity and its reported yaw rate
+stays exactly 0.0. `-138.00` against `+138.0` is not drift, it is the
+filter never rotating at all. Wheel odometry on the same run is 0.11%, so
+`/odom` is not the problem.
+
+Ruled out, each checked directly:
+
+- TF. `base_footprint -> os_imu` resolves.
+- Frame id. The IMU publishes `os_imu`, which is that frame.
+- Covariance. `angular_velocity_covariance[8]` is 1e-05, not the -1 that
+  would mean "unavailable".
+- Timestamps. Sim clock, IMU, corrector and odom stamps all agree, and
+  `use_sim_time` is true on both the corrector and the EKF.
+- Config indices. `imu0_config[11]` is vyaw and `odom0_config[6,7]` are
+  vx, vy, which is the intended split: wheels for speed, gyro for
+  turning.
+- Gyro data. `/ouster/imu` reads 1.36 rad/s during a commanded spin, so
+  the measurement exists.
+
+Still unexplained: why a valid, correctly framed, correctly stamped vyaw
+measurement with a sane covariance produces no yaw at all.
+
+**Separately, and this one IS a defect.** The corrector seeds a
+gyro-z bias of +0.3350 deg/s, measured on hardware, as its starting
+value. The simulated IMU has exactly zero bias, so the corrector injects
+a phantom -0.335 deg/s, and then its own sanity check refuses every
+re-estimate:
+
+```
+seeded gyro-z bias +0.3350 deg/s
+rejecting gyro bias jump of -0.3350 deg/s (limit 0.2005); robot may not
+have been truly stationary
+```
+
+`max_bias_step` is 0.0035 rad/s, so the correction it needs (0.335) is
+larger than the step it will accept (0.2005) and it can never converge.
+The guard that protects it from a bad stationary sample on hardware locks
+it onto the wrong value permanently against any IMU whose bias differs
+from the seed by more than 0.2 deg/s. That is worth fixing regardless of
+the yaw question, and it is a reason not to treat the seed as harmless.
+
+Both of these were only findable once `/odom` stopped being ground truth.
+
 ## Optional: purge the Ouster metadata from published history
 
 **Repo:** this one · **File:** `<sensor-ip>-metadata.json` (removed from the tree)
