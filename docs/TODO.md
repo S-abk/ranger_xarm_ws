@@ -379,7 +379,7 @@ flat ground at 5x if inherent).
 
 ### The velocity drive: tried, and it closes the gap
 
-`sim.launch.py wheel_drive:=velocity` (default still `effort`) sends wheel
+`sim.launch.py wheel_drive:=velocity` (now the default) sends wheel
 speeds to dartsim's own joint velocity drive, capped by the 60 N m joint
 effort limit, instead of closing a PI loop over DDS. The controller and
 xacro pieces now match on both branches: `command_mode` in
@@ -492,11 +492,21 @@ Still open:
   drive is too few to say the drives differ. It may also simply be
   realistic: a stiff drive on mu 0.15 patches under some wheels.
 
-**The default stays `effort`.** The velocity drive is far better on
-rough ground and matches both Isaac and how a real motor controller
-behaves; the effort drive is better by centimetres on `low_friction` and
-possibly on `mixed_surface`. That trade is a judgement call, recorded
-here rather than made silently.
+**`velocity` is now the gz default** (`sim.launch.py wheel_drive`,
+`run_surface_sweep.sh WHEEL_DRIVE`, and the controller's own
+`command_mode`, so a node restarted by hand does not send PI torques to a
+velocity controller). The velocity drive is far better on rough ground
+and matches both Isaac and how a real motor controller behaves; the
+effort drive remains available with `wheel_drive:=effort` and is better
+by centimetres on `low_friction` and possibly on `mixed_surface`. The
+xacro's `wheels_command_interface` still defaults to effort, because it
+is a description default other consumers read and the gz launch always
+passes it explicitly.
+
+Smoke-tested with no arguments: the launch loads
+`JointGroupVelocityController` with the controller in velocity mode at
+gate power 3, and scores match the gated sweep (rough ground
+2.72 % / 0.90 % and 8.73 % / 1.99 %; flat 0.11 % / 0.17 %).
 
 **Isaac pins the gate off** (`steer_gate_power: 0.0` in
 `ranger_xarm_isaac/launch/control.launch.py`). Isaac also runs the
@@ -509,7 +519,9 @@ A Gazebo server survived teardown for hours and served a second
 `/controller_manager` from its in-process `gz_ros2_control` -- find gz
 with `pgrep -f "gz sim"`, since its process name is `ruby`. Stale Fast DDS
 segments in `/dev/shm` compound it. `run_surface_sweep.sh` now does both
-between worlds. `grep` is unreliable on USD crate files. The earlier
+between worlds, and matches processes by full executable path: its
+earlier bare patterns (`gz sim`, `sim.launch.py`) also matched whatever
+shell invoked it, and killed the caller mid-sweep. `grep` is unreliable on USD crate files. The earlier
 5-8x vertical-acceleration comparison was confounded by mismatched IMU
 rates. The per-segment "truth vx/vy" decomposition assumed world-frame
 ground-truth twist, which is unverified for either simulator.
