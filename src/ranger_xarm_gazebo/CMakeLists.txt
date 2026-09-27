@@ -10,6 +10,9 @@ install(PROGRAMS
   scripts/ranger_4wis_controller.py
   scripts/wheel_odometry.py
   scripts/make_surface_worlds.py
+  scripts/run_surface_sweep.sh
+  scripts/reset_pose.sh
+  scripts/ekf_score.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(FILES README.md

@@ -185,21 +185,43 @@ The discriminator that found it, and the one to reach for next time: set
 measurement starts being fused, the target frame is the problem, not the
 sensor, the data or the filter.
 
-## Resolved: what the EKF buys on rough ground, and what it cannot
+## Resolved: what the EKF buys across the four surfaces, and what it cannot
 
-**Measured:** `rough_ground.sdf` (101 staggered 24 mm bumps), five trials from
-a teleported fixed start, `sensors:=true odom_tf:=false`.
+**Measured:** all four worlds, five trials each from a teleported fixed start,
+`sensors:=true odom_tf:=false`. Ranges are across trials; flat ground is a
+single run predating the harness fix below (no teleport, so unaffected).
 
-| estimator | pos err (% of path) | net yaw err |
-| --- | --- | --- |
-| wheel odometry | 42 - 237 % | 59 - 180 deg |
-| EKF (odom + gyro) | 8.6 - 31 % | <= 0.4 deg |
+| surface | wheel odom pos | wheel odom yaw | EKF pos | EKF yaw |
+| --- | --- | --- | --- | --- |
+| `empty_ground` | 0.10 % | +0.16 deg | 1.39 % | -0.01 deg |
+| `low_friction` (mu 0.25) | 0.21 - 0.46 % | 0.4 - 0.9 deg | 0.04 - 0.28 % | <= 0.07 deg |
+| `mixed_surface` (31 mu 0.15 patches) | 1.8 - 2.8 % | 0.3 - 4.4 deg | 1.4 - 2.2 % | <= 0.24 deg |
+| `rough_ground` (101 bumps, 24 mm) | 42 - 237 % | 59 - 180 deg | 8.6 - 31 % | <= 0.4 deg |
 
-On flat ground the two are indistinguishable (0.10 % vs 1.39 %), so rough
-ground is the only place the filter earns its keep. It does, decisively, but
-only on heading.
+Three things fall out of this.
 
-A per-segment probe says why. Longitudinal traction over the bumps is
+Uniform low friction is not a hard surface for this base. A 4WIS platform
+drives all four wheels at modest acceleration, so mu 0.25 barely slips and
+both estimators stay under half a percent. Patchy friction is mildly harder
+because the wheels lose grip one at a time; geometry is far harder than
+friction of any kind.
+
+Heading is where the filter always wins, and the margin widens exactly as the
+surface gets worse: from parity on flat ground to two orders of magnitude on
+the bumps. The cleanest single demonstration is `low_friction` trial 1, where
+wheel odometry's heading collapsed to -69 deg and carried its position error to
+4.84 m, while the EKF -- fed the same wheel velocities -- finished 3 mm from
+ground truth. The wheel velocities were never the problem there; the yaw that
+rotated them into the world frame was, and that is precisely the term the gyro
+replaces.
+
+Position is a different story, and flat ground is the one place the EKF is
+(slightly) worse. It has no absolute position input anywhere, so on a surface
+where dead reckoning is already near-perfect the filter can only add process
+noise.
+
+A per-segment probe on `rough_ground` says where the residual comes from.
+Longitudinal traction over the bumps is
 essentially perfect -- driving straight, the wheels report 0.350 m/s against a
 ground truth of 0.350 m/s, and the filter accumulates 3 mm over six seconds.
 The error is entirely lateral: during a steered arc the wheels claim
