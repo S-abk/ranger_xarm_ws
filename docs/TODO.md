@@ -255,7 +255,7 @@ is not blocking anything -- the gyro is still being fused, which is exactly
 what the sub-degree yaw error demonstrates. Worth revisiting only if an
 absolute-position source is added and starts dropping measurements.
 
-## Open: the two simulators disagree on rough ground by two orders of magnitude
+## Open: the two simulators disagree on rough ground; two causes found, neither yet isolated
 
 **Repos:** both · **Worlds:** `rough_ground.sdf` and Isaac's
 `--rough-ground`, which generates the same 101 bumps from the same
@@ -266,22 +266,89 @@ constants.
 | gz (dartsim) | 42 - 237 % | 8.6 - 31 % |
 | Isaac (PhysX) | 0.43 - 4.47 % | 0.54 - 2.89 % |
 
-Everything checked so far says the two are being asked the same
-question. Same grid, stagger, 24 mm height and mu 1.5. Both take the
-same `<sphere radius="${wheel_radius}"/>` collision from
-`ranger_wheels.xacro`, and the Isaac import lands it at
-`/colliders/*_wheel_link/*_tyre/sphere`. The bumps are struck in Isaac,
-not skimmed: driving straight across them the IMU shows 1.13 m/s^2 of
-vertical spread and 4.97 deg/s of pitch rate.
+### Ruled out
 
-What differs is the outcome of that contact. gz bogs the platform down,
-shortening the ground-truth path from 6.7 m to 4.5 - 5.6 m; Isaac barely
-slows it, 6.3 - 6.6 m. That is a contact-resolution difference between
-the two engines, and neither has been checked against the real platform,
-so the honest reading is that the two results bracket an unknown. Treat
-the gz figure as a pessimistic bound and the Isaac one as optimistic
-until a rough-surface run is measured on hardware, alongside the loaded
-rolling radius already listed above.
+Bump geometry, grid and stagger are identical by construction (same
+constants, and both report 101 bumps). Both simulators take the same
+`<sphere radius="${wheel_radius}"/>` from `ranger_wheels.xacro`, and the
+Isaac import lands it at `/colliders/*_wheel_link/*_tyre/sphere` with
+radius 0.100036 -- same primitive, same size. The bumps are struck in
+both, not skimmed.
+
+The failure mode is also the same in both, which is the most useful
+thing found. A per-segment probe shows that in *each* simulator driving
+straight is essentially exact (wheels 0.350 m/s against truth 0.350) and
+all the error is generated in the steered arc and the crab, where the
+base slides. gz: arc wheels +0.281 against truth vx +0.106, vy -0.124.
+Isaac: arc wheels +0.293 against truth vx +0.068, vy -0.233. Same
+mechanism, different magnitude.
+
+### Two real differences found
+
+**Wheel friction.** The Isaac tyre colliders had no physics material at
+all and were running on PhysX's default 0.5, against the 1.2 the same
+xacro gives the gz side. `ranger_wheels.xacro` states the grip twice,
+as `<ode><mu>1.5</mu></ode>` inside the tyre `<collision>` and as
+`<mu1>1.2</mu1>` in a `<gazebo reference>` block, and both spellings are
+gz extensions a URDF reader may ignore -- so the importer dropped them
+silently. `urdf_to_usd.py` now binds a material (`--wheel-mu`, default
+1.2) and says how many colliders it bound, because a silent zero there
+looks exactly like a working run.
+
+**Physics timestep.** Isaac defaults to 1/60 s; the gz worlds run at
+1 ms. 16.7x coarser, on an obstacle 24 mm tall. `isaac_bringup.py` now
+takes `--physics-dt`.
+
+### Why neither is yet isolated
+
+Both A/B tests are blocked by the Isaac side, not by the question.
+
+Raising the physics rate destabilises the control bridge: at both 1 ms
+and 1/240 s the base stops moving in ground truth while the wheel joints
+report tens of rad/s. Setting `rendering_dt` to track `physics_dt` (the
+OmniGraph carrying joint commands ticks per rendered frame, so leaving
+it at 1/60 gives 16 physics steps per command) was necessary but not
+sufficient. The bridge is only validated at the default 60 Hz.
+
+The friction test was not completed. At the low real-time factors these
+runs produce, the controller spawners fail in a way that looks like the
+old race -- "Controller already loaded, skipping load_controller" then
+"Failed to configure" -- while the controller_manager log shows it
+configuring and activating the same controller successfully a
+millisecond later. The spawner's own service call is what times out.
+Recovering by hand leaves the articulation in a bad state, and in the
+last attempt the base had driven 84 m clear of the bump field before the
+measurement started, which invalidates anything measured after it.
+
+### Also worth knowing
+
+An earlier reading here claimed gz strikes the bumps 5-8x harder in
+vertical acceleration. **That was confounded and should not be relied
+on.** The gz IMU runs at 100 Hz (`sensors_gazebo.xacro`) while Isaac's
+publishes with the render tick, about 34 Hz at the default timestep, and
+a lower sample rate aliases away exactly the sharp impact peaks that the
+standard deviation was measuring. Any future comparison of ride harshness
+has to match the sensor rates first.
+
+Two things repeatedly cost time and are worth recognising quickly next
+time. `ros2 control list_controllers` kept alternating between reporting
+`ranger_wheel_controller` as velocity and as effort: stale DDS
+participants from killed managers stay in the daemon's graph, and the
+CLI answers from whichever it finds, so the controller type appeared to
+change between consecutive calls on a single live manager. And `pgrep -f`
+matches the shell running it, so a process count of 1 or 2 is often just
+this tooling seeing itself.
+
+### To finish this
+
+Get one clean Isaac run at the default 60 Hz on the friction-corrected
+USD, verified by a short straight drive (wheels and truth both near
+0.350 m/s, base still inside the bump field) before any scoring, and
+compare against the 0.43 - 4.47 % baseline. Then, separately, make the
+control bridge work at a matched timestep. Until one of those lands, the
+two rough-ground results bracket an unknown: treat gz as a pessimistic
+bound and Isaac as optimistic, and settle it on hardware alongside the
+loaded rolling radius above.
 
 ## Watch: the non-finite guard in wheel_odometry.py is untested in anger
 
