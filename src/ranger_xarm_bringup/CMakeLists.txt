@@ -15,6 +15,7 @@ install(PROGRAMS
   scripts/cmd_vel_deadman.py
   scripts/imu_yaw_bias_corrector.py
   scripts/lidar_odometry_relay.py
+  scripts/lidar_terrain_filter.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
