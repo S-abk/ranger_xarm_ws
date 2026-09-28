@@ -136,8 +136,11 @@ than a configuration error.
 
 The same EKF can also fuse KISS-ICP lidar odometry (`lidar_odometry:=true`,
 off by default; KISS-ICP is built from source via `ranger_xarm.repos`). It
-needs the full-rate cloud: at the ~4 Hz the simulator manages in real time,
-KISS-ICP is much less reliable. See the launch file's docstring.
+needs the full-rate cloud, which a 2 - 3 MB Ouster message only gets between
+processes with a larger Fast DDS shared-memory segment: export
+`ranger_xarm_bringup/config/fastdds_large_shm.xml` as
+`FASTRTPS_DEFAULT_PROFILES_FILE` in the driver's shell and the EKF's. Without
+it, loopback UDP silently drops scans. See the launch file's docstring.
 
 **`/ouster/points` needs enlarged UDP receive buffers** or the kernel drops
 about half the frames — it reads as a ~5 Hz sensor instead of 10 Hz, with

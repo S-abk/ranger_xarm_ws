@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fast DDS profile for full-rate Ouster clouds between processes.
+
+  A 128 x 1024 Ouster cloud is 2 - 3 MB. Fast DDS's default shared-memory
+  segment is 512 KB, so a message that size silently falls back to UDP on
+  loopback, and the default 212 KB socket receive buffer drops fragments and
+  with them whole scans. Measured: gz delivered 5.6 of 10 Hz and Isaac 1.7
+  of 10 Hz until every process used this profile; then both delivered 10.
+
+  It applies only to processes that have it, and a sample only travels over
+  shared memory if BOTH ends do, so export it in every shell that runs the
+  lidar publisher (driver or simulator) or a consumer (KISS-ICP):
+
+      export FASTRTPS_DEFAULT_PROFILES_FILE=$(ros2 pkg prefix ranger_xarm_bringup)/share/ranger_xarm_bringup/config/fastdds_large_shm.xml
+
+  UDP stays enabled for anything on another machine.
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>shm_large</transport_id>
+      <type>SHM</type>
+      <segment_size>33554432</segment_size>
+    </transport_descriptor>
+    <transport_descriptor>
+      <transport_id>udp</transport_id>
+      <type>UDPv4</type>
+    </transport_descriptor>
+  </transport_descriptors>
+  <participant profile_name="large_shm" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>shm_large</transport_id>
+        <transport_id>udp</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>
