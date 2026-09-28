@@ -142,9 +142,6 @@ processes with a larger Fast DDS shared-memory segment: export
 `FASTRTPS_DEFAULT_PROFILES_FILE` in the driver's shell and the EKF's. Without
 it, loopback UDP silently drops scans. See the launch file's docstring.
 
-SLAM (slam_toolbox) and Nav2 run on the 3D Ouster, with a custom MPPI motion
-model for the 4WIS base: see `docs/NAVIGATION.md`.
-
 **`/ouster/points` needs enlarged UDP receive buffers** or the kernel drops
 about half the frames — it reads as a ~5 Hz sensor instead of 10 Hz, with
 `RcvbufErrors` climbing in `/proc/net/snmp`:
