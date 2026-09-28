@@ -31,10 +31,14 @@ instead pointed forwards and spun in reverse. Without that flip, reversing
 would make all four wheels swing a half turn through 90 degrees, and the
 robot would scrub sideways through the transition.
 
-When the commanded twist is ~0 the steer angle is undefined (atan2(0,0)), so
-the last angle is held rather than recomputed. Otherwise the wheels would
-snap to zero every time the robot stops, which drags the stationary robot
-sideways.
+When a wheel's commanded speed is below steer_deadband its direction is
+undefined (atan2(0,0)) or noise, so the last angle is held rather than
+recomputed, and the wheel drives the command's component along it. Otherwise
+the wheels snap to zero every time the robot stops, which drags the
+stationary robot sideways, and a planner's small corrections swing the
+knuckles back and forth while the base goes nowhere. Near the +/-90 degree
+fold the knuckle keeps its side (fold_hysteresis_deg) rather than swinging a
+half turn for a small change of direction.
 """
 import math
 
@@ -98,6 +102,20 @@ class Ranger4WIS(Node):
         # body twist. 0 disables.
         self.declare_parameter('max_wheel_accel', 1.0,
                                ParameterDescriptor(dynamic_typing=True))
+        # Below this speed at a wheel (m/s) its direction is noise: a
+        # planner's small corrections near a goal point anywhere, and
+        # chasing them swung the knuckles back and forth by up to 90 deg
+        # while the base stood still (seen in Isaac under Nav2, which then
+        # gave up with "failed to make progress"). The knuckle holds, and
+        # the wheel drives the command's component along it.
+        self.declare_parameter('steer_deadband', 0.03,
+                               ParameterDescriptor(dynamic_typing=True))
+        # A target crossing the +/-90 deg fold (crab left <-> crab right,
+        # say) would swing a knuckle 180 deg for a direction change of a few
+        # degrees. Within this many degrees of the fold the knuckle keeps
+        # its side and the wheel spins the other way instead.
+        self.declare_parameter('fold_hysteresis_deg', 10.0,
+                               ParameterDescriptor(dynamic_typing=True))
         # 'effort' closes the speed loop here and sends torque. 'velocity'
         # sends the wheel speed straight through to a simulator whose joint
         # velocity drive is a torque-limited actuator, which then closes the
@@ -128,6 +146,8 @@ class Ranger4WIS(Node):
         self.gate_power = float(self.get_parameter('steer_gate_power').value)
         self.gate_mode = self.get_parameter('steer_gate_mode').value
         self.max_accel = float(self.get_parameter('max_wheel_accel').value)
+        self.steer_deadband = float(self.get_parameter('steer_deadband').value)
+        self.fold_hyst = math.radians(float(self.get_parameter('fold_hysteresis_deg').value))
         self.last_cmd_speeds = [0.0] * len(CORNERS)
         if self.gate_mode not in ('common', 'per_wheel'):
             raise ValueError(f"steer_gate_mode must be common or per_wheel, got {self.gate_mode}")
@@ -179,6 +199,8 @@ class Ranger4WIS(Node):
             f'4WIS ready ({self.mode}'
             + (f', steer gate {self.gate_mode} power {self.gate_power:g}, '
                f'wheel accel {self.max_accel:g} m/s^2' if self.mode == 'velocity' else '')
+            + f', steer deadband {self.steer_deadband:g} m/s, '
+              f'fold hysteresis {math.degrees(self.fold_hyst):g} deg'
             + f'): r={self.r} half_wheelbase={lx} half_track={ly}')
 
     def _on_cmd(self, msg):
@@ -254,9 +276,12 @@ class Ranger4WIS(Node):
             vyi = vy + wz * xi
             speed = math.hypot(vxi, vyi)
 
-            if speed < 1e-6:
-                angle = self.last_steer[c]
-                omega = 0.0
+            last = self.last_steer[c]
+            if speed < max(self.steer_deadband, 1e-6):
+                # Too slow for its direction to mean anything: hold the
+                # knuckle and drive the component along it.
+                angle = last
+                omega = (vxi * math.cos(angle) + vyi * math.sin(angle)) / self.r
             else:
                 angle = math.atan2(vyi, vxi)
                 omega = speed / self.r
@@ -268,6 +293,14 @@ class Ranger4WIS(Node):
                 elif angle < -math.pi / 2.0:
                     angle += math.pi
                     omega = -omega
+                # Near the fold, stay on the knuckle's side rather than swing
+                # 180 degrees across it.
+                if (abs(angle - last) > math.pi / 2.0
+                        and abs(angle) > math.pi / 2.0 - self.fold_hyst):
+                    other = angle - math.copysign(math.pi, angle)
+                    if abs(other) <= math.pi / 2.0 + self.fold_hyst:
+                        angle = max(-math.pi / 2.0, min(math.pi / 2.0, other))
+                        omega = -omega
                 self.last_steer[c] = angle
 
             omega = max(-self.max_w, min(self.max_w, omega))
