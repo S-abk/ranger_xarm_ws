@@ -33,12 +33,20 @@ pose as a second odometry source (odom1):
   anchored positions carry KISS-ICP's heading, and leaving it out makes the
   EKF rotate itself to reconcile them with a drifting gyro.
 
-Measured in gz (docs/TODO.md), at a real-time factor slow enough for the
-simulated Ouster to reach its 10 Hz: on rough ground inside a room, 0.13 -
-0.91 % of path against 1.5 - 1.7 % for wheels + gyro; on featureless ground
-the relay never trusts the lidar and the result equals wheels + gyro exactly.
-At real time the simulated lidar manages only ~4 Hz, KISS-ICP is much worse,
-and this should stay off.
+KISS-ICP needs the full-rate cloud, and a 128 x 1024 Ouster cloud is too
+big for Fast DDS's default shared memory: it falls back to UDP and loses
+scans. Export config/fastdds_large_shm.xml as FASTRTPS_DEFAULT_PROFILES_FILE
+in every process that publishes or consumes the cloud (see that file).
+
+Measured in simulation (docs/TODO.md), on rough ground inside a room: the
+fused estimate follows KISS-ICP, 0.05 - 1.3 % of path in gz and 1.3 - 3.1 %
+in Isaac, against 1.1 - 2.2 % for wheels + gyro, with heading error cut
+from ~3 deg to under 0.1 deg in Isaac; on featureless ground the relay never
+trusts the lidar and the result equals wheels + gyro exactly. What the
+relay cannot catch is a slow scale error: in gz near real time the lidar's
+content lags its stamps, KISS-ICP under-counts distance by ~15 % with a
+perfect heading, and the fused estimate inherits it. Evaluate gz lidar
+odometry at a real-time factor of 0.3.
 
 KISS-ICP is built from source; see ranger_xarm.repos.
 """

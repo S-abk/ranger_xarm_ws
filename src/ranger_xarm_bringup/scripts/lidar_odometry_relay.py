@@ -101,8 +101,11 @@ class LidarOdometryRelay(Node):
         p('odom_frame', 'odom')
         p('base_frame', 'base_footprint')
         p('position_covariance', 1e-4)      # m^2 on the published x and y
-        p('yaw_covariance', 1e-4)           # rad^2, used only if yaw is fused
-        p('max_yaw_mismatch', 2.0)          # deg per KISS-ICP step, against the EKF
+        p('yaw_covariance', 1e-4)           # rad^2 on the published yaw
+        # deg per KISS-ICP step, against the EKF. Real registration failures
+        # jumped 16 - 48 deg in one step; Isaac's gyro alone spikes 2 - 3 deg
+        # in 0.1 s on bumps, and each false alarm re-anchors to the EKF's error.
+        p('max_yaw_mismatch', 5.0)
         p('max_translation_mismatch', 0.5)  # m per KISS-ICP step, against the EKF
         p('max_age', 0.25)                  # s behind the EKF beyond which a pose is stale
         p('min_range', 0.8)

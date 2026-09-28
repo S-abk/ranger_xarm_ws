@@ -817,14 +817,30 @@ publishes while the scene's horizontal structure can constrain scan matching
 and each step's heading agrees with the gyro-held EKF; after an interruption
 it re-anchors to the EKF's own pose.
 
-Scored with `ekf_score.py` in gz, the relay's position error as % of path,
-paired against wheels + gyro in the same run:
+Scored with `ekf_score.py`, position error as % of path, paired against
+wheels + gyro in the same run:
 
-| world | real-time factor | fused | wheels + gyro | KISS-ICP alone |
+| sim, world | conditions | fused | wheels + gyro | KISS-ICP alone |
 |---|---|---|---|---|
-| rough_room | 0.3 (lidar at 10 Hz) | 0.05, 1.25, 1.12, 0.24 | 1.53, 2.20, 1.49, 1.18 | 0.05, 1.17, 1.06, 0.24 |
-| rough_room | 1.0 (lidar ~4 Hz) | 0.30, 1.21, 1.12, 1.37 | 1.90, 1.27, 1.10, 2.08 | 0.30, 1.22, 1.13, 1.39 |
-| empty_ground, rough_ground | 0.3 / 1.0 | identical to wheels + gyro (lidar never trusted) | 0.04 / 2.2 | 28 - 145 |
+| gz rough_room | RTF 0.3, lidar 10 Hz | 0.05, 1.25, 1.12, 0.24 | 1.53, 2.20, 1.49, 1.18 | 0.05, 1.17, 1.06, 0.24 |
+| gz rough_room | RTF 1, default DDS, lidar 5.6 Hz | 0.30, 1.21, 1.12, 1.37 | 1.90, 1.27, 1.10, 2.08 | 0.30, 1.22, 1.13, 1.39 |
+| gz rough_room | RTF 0.85, large-SHM DDS, lidar 10 Hz | **30.4, 27.2, 26.8, 27.6** | 1.83, 1.53, 1.73, 1.05 | same as fused |
+| Isaac rough ground + room | RTF 0.45, large-SHM DDS, lidar 10 Hz | 1.27, 1.34, 3.07 | 1.52, 1.61, 1.58 | 1.24, 1.34, 3.07 |
+| gz empty_ground, rough_ground; Isaac rough ground | — | identical to wheels + gyro (lidar never trusted) | 0.04 / 2.2 / 1.5 - 2.8 | 28 - 186 |
+
+In Isaac the fused heading error was 0.01 - 0.05 deg against 3.1 - 3.2 deg
+for wheels + gyro: Isaac's gyro spikes on the bumps, and there the lidar
+heading is worth more than the position.
+
+The bold row is the one failure the relay cannot see. gz near real time,
+with the cloud arriving at its full 10 Hz, gives KISS-ICP scans whose
+content lags their stamps (5 - 7 % of its steps show no motion while the
+robot moves); it under-counts distance by 13 - 15 % with a perfect heading,
+and a slow scale error passes both checks (heading fine, ~5 mm per step).
+Wheel distance cannot referee it either, because wheel slip over-counts and
+looks the same. At RTF 0.3 the same 10 Hz scans are fine; Isaac renders in
+lockstep with physics and does not show it. Nothing suggests a real Ouster
+produces stale scans, but a scale error from any cause would go through.
 
 Fault injection (floor-cropped cloud at real time, which makes KISS-ICP lose
 its z/pitch constraint): KISS-ICP 13.95 % / -48 deg -> fused 0.37 %;
@@ -852,17 +868,34 @@ What was tried and measured on the way, so nobody retries it:
 
 Simulation limits, not properties of the design:
 
-- gz renders the 1024x128 Ouster at only ~4 Hz in real time on this machine;
-  slowing the world (`gz service -s /world/<w>/set_physics` with
-  `real_time_factor: 0.3`) restores 10 Hz. On `empty_ground` that call left
-  the robot unable to drive; not investigated.
+- The cloud rate was never gz's rendering: a 2 - 3 MB cloud exceeds Fast
+  DDS's 512 KB shared-memory segment, falls back to loopback UDP, and the
+  default 212 KB receive buffer drops scans (gz 5.6 Hz, Isaac 1.7 Hz, UDP
+  `RcvbufErrors` climbing). `ranger_xarm_bringup/config/fastdds_large_shm.xml`
+  exported in every process fixes it (10 Hz in both). The same applies to
+  the real Ouster driver and KISS-ICP in separate processes.
+- For gz lidar evaluation, slow the world to RTF 0.3
+  (`gz service -s /world/<w>/set_physics`, `real_time_factor: 0.3`); see
+  the scale error above. On `empty_ground` that call left the robot unable
+  to drive; not investigated.
+- Isaac published the Ouster's transform under its prim name (`sensor`), so
+  nothing connected `os_lidar` to the robot and KISS-ICP reported motion
+  in the lidar's yawed frame, i.e. backwards; the scan origin was also
+  72 mm above `os_sensor` instead of 36. Fixed on the Isaac side: the
+  asset already carries the offset, and `os_sensor -> os_lidar` is now
+  published statically as the real driver does. With the frame missing the
+  relay never trusted the lidar, so the fused result stayed equal to
+  wheels + gyro rather than going wrong.
+- The heading check was 2 deg per step. Isaac's gyro spikes 2 - 3 deg in
+  0.1 s on bumps; each false alarm re-anchored onto the EKF's error. Real
+  registration failures jumped 16 - 48 deg, so it is now 5 deg.
 - `rough_room`'s bump lattice (0.275 m effective x period) makes KISS-ICP's
   position flip by ~0.12 - 0.27 m and back.
 
-Untested: Isaac, and the real robot. On hardware, check the Ouster's `t`
-field reaches KISS-ICP (deskew), that the UDP buffers are enlarged (a 5 Hz
-cloud is the simulator's failure mode), and that a raised arm does not
-enter the 0.8 m `lidar_min_range`.
+Untested: the real robot. On hardware, export `fastdds_large_shm.xml` in
+the driver's and the EKF's shells and check `/ouster/points` arrives at the
+sensor rate, check the Ouster's `t` field reaches KISS-ICP (deskew), and
+that a raised arm does not enter the 0.8 m `lidar_min_range`.
 
 ## Watch: the non-finite guard in wheel_odometry.py is untested in anger
 
