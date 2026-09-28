@@ -134,6 +134,11 @@ default; `publish_odom_tf:=false` hands it to the gyro-fused EKF in
 whichever message arrived last, and the symptom looks like a bad sensor rather
 than a configuration error.
 
+The same EKF can also fuse KISS-ICP lidar odometry (`lidar_odometry:=true`,
+off by default; KISS-ICP is built from source via `ranger_xarm.repos`). It
+needs the full-rate cloud: at the ~4 Hz the simulator manages in real time,
+KISS-ICP is much less reliable. See the launch file's docstring.
+
 **`/ouster/points` needs enlarged UDP receive buffers** or the kernel drops
 about half the frames — it reads as a ~5 Hz sensor instead of 10 Hz, with
 `RcvbufErrors` climbing in `/proc/net/snmp`:

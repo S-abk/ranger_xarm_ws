@@ -23,3 +23,11 @@ repositories:
     type: git
     url: https://github.com/S-abk/xarm_ros2.git
     version: 8d01a1ba12fa18eb352b085fcb1d36a26e14723f
+  # KISS-ICP lidar odometry, fused into the EKF by ranger_xarm_bringup's
+  # ekf_odom_imu.launch.py (lidar_odometry:=true). Built from source because
+  # the Jazzy binary is not available from this machine's apt sources and
+  # rosdep has no rule for it. v1.3.0 is the release that added Jazzy.
+  kiss-icp:
+    type: git
+    url: https://github.com/PRBonn/kiss-icp.git
+    version: b16835283aee62f7d5e2bdf6c1c3bb2930de74ff

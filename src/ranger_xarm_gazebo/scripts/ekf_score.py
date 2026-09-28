@@ -9,11 +9,15 @@ from geometry_msgs.msg import Twist
 def yaw(q): return math.atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z))
 
 class S(Node):
-    def __init__(self, ekf_topic):
+    def __init__(self, ekf_topic, extra=()):
         super().__init__('ekf_score'); self.o=self.f=self.g=None
         self.create_subscription(Odometry,'/odom',lambda m:setattr(self,'o',m),20)
         self.create_subscription(Odometry,ekf_topic,lambda m:setattr(self,'f',m),20)
         self.create_subscription(Odometry,'/ground_truth/odom',lambda m:setattr(self,'g',m),20)
+        # Any further odometry topics are scored alongside, e.g. /kiss/odometry.
+        self.x = {t: None for t in extra}
+        for t in extra:
+            self.create_subscription(Odometry, t, lambda m, t=t: self.x.__setitem__(t, m), 20)
         self.pub=self.create_publisher(Twist,'/cmd_vel',10)
     def p(self,m):
         q=m.pose.pose.position; return (q.x,q.y,yaw(m.pose.pose.orientation))
@@ -26,14 +30,20 @@ class S(Node):
             rclpy.spin_once(self,timeout_sec=0.02)
 
 def main():
+    # ekf_score.py [ekf_topic] [extra_odometry_topic ...]
     ekf_topic = sys.argv[1] if len(sys.argv)>1 else '/odometry/filtered'
-    rclpy.init(); n=S(ekf_topic); t0=time.time()
-    while (n.o is None or n.f is None or n.g is None) and time.time()-t0<40:
+    extra = sys.argv[2:]
+    rclpy.init(); n=S(ekf_topic, extra); t0=time.time()
+    ready = lambda: (n.o is not None and n.f is not None and n.g is not None
+                     and all(v is not None for v in n.x.values()))
+    while not ready() and time.time()-t0<40:
         rclpy.spin_once(n,timeout_sec=0.2)
-    if n.o is None or n.f is None or n.g is None:
-        print(f"missing streams: odom={n.o is not None} ekf({ekf_topic})={n.f is not None} truth={n.g is not None}")
+    if not ready():
+        print(f"missing streams: odom={n.o is not None} ekf({ekf_topic})={n.f is not None} truth={n.g is not None} "
+              + ' '.join(f'{t}={v is not None}' for t, v in n.x.items()))
         return
     o0,f0,g0=n.p(n.o),n.p(n.f),n.p(n.g); gp=g0; dist=0.0
+    x0 = {t: n.p(m) for t, m in n.x.items()}
     for vx,vy,wz,dur in ((0.35,0,0,6.0),(0.30,0,0.4,6.0),(0.0,0.30,0,4.0),(0.35,0,0,6.0)):
         tw=Twist(); tw.linear.x=float(vx); tw.linear.y=float(vy); tw.angular.z=float(wz)
         n.pump(dur,tw); n.pub.publish(Twist()); n.pump(1.5)
@@ -54,5 +64,8 @@ def main():
     print(f"{'estimator':22s} {'pos err':>9s} {'% path':>8s} {'yaw err':>9s}")
     print(f"{'wheel odometry':22s} {pe(o,o0):9.3f} {100*pe(o,o0)/dist:7.2f}% {ye(o,o0):+8.2f}")
     print(f"{'EKF (odom+gyro)':22s} {pe(f,f0):9.3f} {100*pe(f,f0)/dist:7.2f}% {ye(f,f0):+8.2f}")
+    for t, m in n.x.items():
+        a = n.p(m)
+        print(f"{t:22s} {pe(a,x0[t]):9.3f} {100*pe(a,x0[t])/dist:7.2f}% {ye(a,x0[t]):+8.2f}")
     rclpy.shutdown()
 main()

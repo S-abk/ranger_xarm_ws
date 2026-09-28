@@ -14,6 +14,7 @@ install(DIRECTORY config
 install(PROGRAMS
   scripts/cmd_vel_deadman.py
   scripts/imu_yaw_bias_corrector.py
+  scripts/lidar_odometry_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

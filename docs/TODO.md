@@ -808,6 +808,62 @@ shell invoked it, and killed the caller mid-sweep. `grep` is unreliable on USD c
 rates. The per-segment "truth vx/vy" decomposition assumed world-frame
 ground-truth twist, which is unverified for either simulator.
 
+## Added: KISS-ICP lidar odometry in the EKF (`lidar_odometry:=true`, off by default)
+
+KISS-ICP runs on the Ouster cloud, `lidar_odometry_relay.py` re-anchors its
+pose into the EKF's odom frame, and the EKF fuses x, y and yaw as absolute
+measurements at each scan's time (`smooth_lagged_data`). The relay only
+publishes while the scene's horizontal structure can constrain scan matching
+and each step's heading agrees with the gyro-held EKF; after an interruption
+it re-anchors to the EKF's own pose.
+
+Scored with `ekf_score.py` in gz, the relay's position error as % of path,
+paired against wheels + gyro in the same run:
+
+| world | real-time factor | fused | wheels + gyro | KISS-ICP alone |
+|---|---|---|---|---|
+| rough_room | 0.3 (lidar at 10 Hz) | 0.05, 1.25, 1.12, 0.24 | 1.53, 2.20, 1.49, 1.18 | 0.05, 1.17, 1.06, 0.24 |
+| rough_room | 1.0 (lidar ~4 Hz) | 0.30, 1.21, 1.12, 1.37 | 1.90, 1.27, 1.10, 2.08 | 0.30, 1.22, 1.13, 1.39 |
+| empty_ground, rough_ground | 0.3 / 1.0 | identical to wheels + gyro (lidar never trusted) | 0.04 / 2.2 | 28 - 145 |
+
+Fault injection (floor-cropped cloud at real time, which makes KISS-ICP lose
+its z/pitch constraint): KISS-ICP 13.95 % / -48 deg -> fused 0.37 %;
+KISS-ICP 41 % / +153 deg -> fused 3.47 % against 2.02 % without lidar
+(contained, not eliminated: some error enters before the heading jump).
+
+What was tried and measured on the way, so nobody retries it:
+
+- **Velocity fusion** (differential mode, or the relay publishing a twist):
+  KISS-ICP's per-scan velocity is ~3x noisier than the wheels' (0.037 vs
+  0.011 m/s RMS); the fused velocity was worse than the wheels alone and the
+  score worse than the baseline. Its pose is good because per-scan errors
+  cancel, which velocity fusion throws away.
+- **Pose without yaw:** the anchored positions carry KISS-ICP's heading, and
+  the EKF rotated itself ~3 deg to reconcile them with the gyro (here, with
+  the drift before the bias corrector's first stationary window).
+- **Blocking TF lookups in the relay** stalled it for seconds; the stale
+  poses it then published dragged the EKF back 0.45 m. It now reads the
+  EKF's odometry history and holds scans until the EKF catches up.
+- **A tight per-step translation check** ratcheted error in (see the relay
+  docstring). It now only catches gross jumps (0.5 m).
+- **Cropping the floor** removed a saw-tooth bias at 4 Hz on flat ground
+  (KISS-ICP 1.0 % -> 0.02 %), but on rough ground KISS-ICP then failed every
+  trial. At 10 Hz the uncropped cloud is fine, so there is no crop.
+
+Simulation limits, not properties of the design:
+
+- gz renders the 1024x128 Ouster at only ~4 Hz in real time on this machine;
+  slowing the world (`gz service -s /world/<w>/set_physics` with
+  `real_time_factor: 0.3`) restores 10 Hz. On `empty_ground` that call left
+  the robot unable to drive; not investigated.
+- `rough_room`'s bump lattice (0.275 m effective x period) makes KISS-ICP's
+  position flip by ~0.12 - 0.27 m and back.
+
+Untested: Isaac, and the real robot. On hardware, check the Ouster's `t`
+field reaches KISS-ICP (deskew), that the UDP buffers are enlarged (a 5 Hz
+cloud is the simulator's failure mode), and that a raised arm does not
+enter the 0.8 m `lidar_min_range`.
+
 ## Watch: the non-finite guard in wheel_odometry.py is untested in anger
 
 **Repo:** this one · **File:** `src/ranger_xarm_gazebo/scripts/wheel_odometry.py`
