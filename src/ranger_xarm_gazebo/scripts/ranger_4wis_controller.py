@@ -31,9 +31,12 @@ instead pointed forwards and spun in reverse. Without that flip, reversing
 would make all four wheels swing a half turn through 90 degrees, and the
 robot would scrub sideways through the transition.
 
-When a wheel's commanded speed is below steer_deadband its direction is
-undefined (atan2(0,0)) or noise, so the last angle is held rather than
-recomputed, and the wheel drives the command's component along it. Otherwise
+With steer_modes 'agilex' (the default) a twist is first reduced to the
+one mode the real Ranger would execute for it -- parallel, spinning or dual
+Ackermann, as AgileX's ranger_ros2 driver chooses -- so the four wheels
+always hold one of those geometries. When every wheel's commanded speed is
+below steer_deadband the command's direction is undefined (atan2(0,0)) or
+noise, so the knuckles hold their angles together and the wheels stop. Otherwise
 the wheels snap to zero every time the robot stops, which drags the
 stationary robot sideways, and a planner's small corrections swing the
 knuckles back and forth while the base goes nowhere. Near the +/-90 degree
@@ -102,12 +105,12 @@ class Ranger4WIS(Node):
         # body twist. 0 disables.
         self.declare_parameter('max_wheel_accel', 1.0,
                                ParameterDescriptor(dynamic_typing=True))
-        # Below this speed at a wheel (m/s) its direction is noise: a
-        # planner's small corrections near a goal point anywhere, and
-        # chasing them swung the knuckles back and forth by up to 90 deg
+        # Below this speed at every wheel (m/s) the command's direction is
+        # noise: a planner's small corrections near a goal point anywhere,
+        # and chasing them swung the knuckles back and forth by up to 90 deg
         # while the base stood still (seen in Isaac under Nav2, which then
-        # gave up with "failed to make progress"). The knuckle holds, and
-        # the wheel drives the command's component along it.
+        # gave up with "failed to make progress"). All knuckles then hold
+        # and the wheels stop, together, keeping one steering geometry.
         self.declare_parameter('steer_deadband', 0.03,
                                ParameterDescriptor(dynamic_typing=True))
         # A target crossing the +/-90 deg fold (crab left <-> crab right,
@@ -116,6 +119,32 @@ class Ranger4WIS(Node):
         # its side and the wheel spins the other way instead.
         self.declare_parameter('fold_hysteresis_deg', 10.0,
                                ParameterDescriptor(dynamic_typing=True))
+        # 'agilex': execute a twist the way the real Ranger does. Its driver
+        # (agilexrobotics/ranger_ros2, TwistCmdCallback) never runs a general
+        # (vx, vy, wz): it picks ONE mode per command -- parallel if
+        # linear.y != 0 (all wheels at one angle, angular.z ignored),
+        # spinning if |vx|/|wz| < min_turn_radius (vx ignored), otherwise
+        # dual Ackermann (front and rear mirrored about the lateral axis,
+        # steer capped at max_steer_ackermann). The wheels therefore always
+        # hold one of those geometries. 'free': any twist, per-wheel angles.
+        self.declare_parameter('steer_modes', 'agilex')
+        # AgileX's Ranger Mini V3 constants (ranger_params.hpp), which its
+        # mode logic uses; the wheel angles themselves use the description's
+        # geometry above.
+        self.declare_parameter('agilex_wheelbase', 0.494,
+                               ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter('agilex_track', 0.364,
+                               ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter('min_turn_radius', 0.4764,
+                               ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter('max_steer_ackermann', 0.601,
+                               ParameterDescriptor(dynamic_typing=True))
+        # The driver sends atan((l/2)/R) as the steering angle, and its own
+        # odometry reads the robot's steering angle back as the INNER wheel's
+        # (ConvertInnerAngleToCentral). If the firmware realises it as the
+        # inner angle, the base turns about R + track/2, not R. Assumed so;
+        # the firmware is closed, so check it on the real robot.
+        self.declare_parameter('ackermann_steer_is_inner', True)
         # 'effort' closes the speed loop here and sends torque. 'velocity'
         # sends the wheel speed straight through to a simulator whose joint
         # velocity drive is a torque-limited actuator, which then closes the
@@ -148,6 +177,13 @@ class Ranger4WIS(Node):
         self.max_accel = float(self.get_parameter('max_wheel_accel').value)
         self.steer_deadband = float(self.get_parameter('steer_deadband').value)
         self.fold_hyst = math.radians(float(self.get_parameter('fold_hysteresis_deg').value))
+        self.steer_modes = self.get_parameter('steer_modes').value
+        self.ag_l = float(self.get_parameter('agilex_wheelbase').value)
+        self.ag_w = float(self.get_parameter('agilex_track').value)
+        self.min_turn_radius = float(self.get_parameter('min_turn_radius').value)
+        self.max_steer_ack = float(self.get_parameter('max_steer_ackermann').value)
+        self.steer_is_inner = bool(self.get_parameter('ackermann_steer_is_inner').value)
+        self.steer_mode = 'stop'
         self.last_cmd_speeds = [0.0] * len(CORNERS)
         if self.gate_mode not in ('common', 'per_wheel'):
             raise ValueError(f"steer_gate_mode must be common or per_wheel, got {self.gate_mode}")
@@ -200,7 +236,7 @@ class Ranger4WIS(Node):
             + (f', steer gate {self.gate_mode} power {self.gate_power:g}, '
                f'wheel accel {self.max_accel:g} m/s^2' if self.mode == 'velocity' else '')
             + f', steer deadband {self.steer_deadband:g} m/s, '
-              f'fold hysteresis {math.degrees(self.fold_hyst):g} deg'
+              f'fold hysteresis {math.degrees(self.fold_hyst):g} deg, modes {self.steer_modes}'
             + f'): r={self.r} half_wheelbase={lx} half_track={ly}')
 
     def _on_cmd(self, msg):
@@ -263,25 +299,54 @@ class Ranger4WIS(Node):
         self.last_cmd_speeds = out
         return out
 
+    def _agilex_twist(self, vx, vy, wz):
+        """The body twist the real Ranger executes for (vx, vy, wz).
+
+        Mirrors ranger_ros2's TwistCmdCallback mode choice and limits, then
+        the firmware's dual-Ackermann turn about the lateral axis."""
+        if vy != 0.0:                                   # parallel: angular ignored
+            self.steer_mode = 'parallel'
+            return vx, vy, 0.0
+        if abs(wz) < 1e-6:
+            self.steer_mode = 'ackermann' if vx != 0.0 else 'stop'
+            return vx, 0.0, 0.0
+        radius = abs(vx) / abs(wz)
+        if radius < self.min_turn_radius:               # spinning: linear ignored
+            self.steer_mode = 'spinning'
+            return 0.0, 0.0, wz
+        self.steer_mode = 'ackermann'
+        half = self.ag_l / 2.0
+        steer = min(math.atan(half / radius), self.max_steer_ack, math.radians(40.0))
+        r_turn = half / math.tan(steer)
+        if self.steer_is_inner:
+            r_turn += self.ag_w / 2.0
+        k = 1.0 if wz * vx >= 0.0 else -1.0
+        return vx, 0.0, k * abs(vx) / r_turn
+
     def _tick(self):
         age = (self.get_clock().now() - self.last_cmd_time).nanoseconds * 1e-9
         # A dropped publisher must coast to a stop, not keep driving.
         t = Twist() if age > self.timeout else self.twist
         vx, vy, wz = t.linear.x, t.linear.y, t.angular.z
+        if self.steer_modes == 'agilex':
+            vx, vy, wz = self._agilex_twist(vx, vy, wz)
 
         steers, speeds = [], []
+        targets = []
         for c in CORNERS:
             xi, yi = self.pos[c]
             vxi = vx - wz * yi
             vyi = vy + wz * xi
-            speed = math.hypot(vxi, vyi)
-
+            targets.append((c, vxi, vyi, math.hypot(vxi, vyi)))
+        # Too slow for any wheel's direction to mean anything: every knuckle
+        # holds where it is and the wheels stop, together, so the set keeps
+        # one geometry (each wheel holding on its own left them mismatched).
+        hold = max(tg[3] for tg in targets) < max(self.steer_deadband, 1e-6)
+        for c, vxi, vyi, speed in targets:
             last = self.last_steer[c]
-            if speed < max(self.steer_deadband, 1e-6):
-                # Too slow for its direction to mean anything: hold the
-                # knuckle and drive the component along it.
+            if hold:
                 angle = last
-                omega = (vxi * math.cos(angle) + vyi * math.sin(angle)) / self.r
+                omega = 0.0
             else:
                 angle = math.atan2(vyi, vxi)
                 omega = speed / self.r

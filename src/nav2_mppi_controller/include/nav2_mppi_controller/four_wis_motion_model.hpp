@@ -10,8 +10,21 @@
 // early and smoothly rather than commanding jumps the base cannot follow.
 //
 // Per rollout step it reproduces the controller:
-//  0. the base acts on each command command_delay after it is sent
-//     (controller tick, simulator or driver, joint drives);
+//  0. the command passes Nav2's velocity smoother (rate limits
+//     smoother_accel, as in nav2_params.yaml), then reaches the base
+//     command_delay later (controller tick, simulator or driver, joints).
+//     The smoother matters more than it looks: MPPI's sampling noise is
+//     independent at every step, so a raw sampled sequence changes
+//     direction every 0.05 s, and fed straight to the knuckle model nearly
+//     every sample went nowhere, all costs were alike, and the robot sat
+//     still (measured: 40 s at 1.5 cm/s before a goal needing a 180 deg
+//     turn). The real smoother removes that jitter before the base sees it;
+//  0b. the twist is reduced to the one steering mode the Ranger executes
+//     for it (ranger_mode_arbiter.py, then AgileX's driver): parallel
+//     (vx, vy, 0) when |vy| outweighs |wz| * mode_lateral_ref, spinning
+//     (0, 0, wz) below min_turn_radius, otherwise dual Ackermann (vx, 0, wz)
+//     turning about R + track/2 with R capped by the steering limit, as the
+//     driver's steering angle reads back as the inner wheel's;
 //  1. commands are clamped to the acceleration limits, as in the base
 //     model, but relative to the previous COMMAND, so the knuckle lag
 //     does not also throttle what is commanded;
@@ -73,7 +86,31 @@ public:
     getParam(wheel_accel_, "wheel_accel", 1.0);
     getParam(feedback_timeout_, "feedback_timeout", 0.5);
     getParam(command_delay_, "command_delay", 0.0);
+    std::vector<double> sm;
+    getParam(sm, "smoother_accel", std::vector<double>{1.0, 1.0, 2.0});
+    if (sm.size() == 3) {
+      smooth_ax_ = static_cast<float>(sm[0]);
+      smooth_ay_ = static_cast<float>(sm[1]);
+      smooth_aw_ = static_cast<float>(sm[2]);
+    }
     getParam(steer_deadband_, "steer_deadband", 0.03);
+    getParam(use_modes_, "use_modes", true);
+    getParam(mode_lateral_ref_, "mode_lateral_ref", 0.30);
+    getParam(min_turn_radius_, "min_turn_radius", 0.4764);
+    double ag_l, ag_w, max_steer;
+    bool inner;
+    getParam(ag_l, "agilex_wheelbase", 0.494);
+    getParam(ag_w, "agilex_track", 0.364);
+    getParam(max_steer, "max_steer_ackermann", 0.601);
+    getParam(inner, "ackermann_steer_is_inner", true);
+    {
+      // The tightest Ackermann radius the arbiter allows and the driver's
+      // steering cap realises (see ranger_mode_arbiter.py).
+      const double phi_i = std::min(max_steer, 40.0 * M_PI / 180.0);
+      r_ack_min_ = static_cast<float>(std::max<double>(min_turn_radius_, (ag_l / 2) / std::tan(phi_i)));
+      r_steer_cap_ = static_cast<float>((ag_l / 2) / std::tan(phi_i));
+      r_inner_offset_ = inner ? static_cast<float>(ag_w / 2) : 0.0f;
+    }
     double hyst_deg;
     getParam(hyst_deg, "fold_hysteresis_deg", 10.0);
     sin_hyst_ = static_cast<float>(std::sin(hyst_deg * M_PI / 180.0));
@@ -122,6 +159,15 @@ public:
     const float step = std::min(steer_rate_ * dt, static_cast<float>(M_PI));
     const float cos_step = std::cos(step), sin_step = std::sin(step);
     const float wheel_step = wheel_accel_ * dt;
+    // Per-step change the smoother allows (0: no smoother).
+    const float sdx = smooth_ax_ > 0.0f ? smooth_ax_ * dt : 1e9f;
+    const float sdy = smooth_ay_ > 0.0f ? smooth_ay_ * dt : 1e9f;
+    const float sdw = smooth_aw_ > 0.0f ? smooth_aw_ * dt : 1e9f;
+    if (sm_x_.size() < steps) {
+      sm_x_.resize(steps);
+      sm_y_.resize(steps);
+      sm_w_.resize(steps);
+    }
 
     std::array<float, 4> c0, s0;
     initialKnuckles(state, c0, s0);
@@ -139,6 +185,7 @@ public:
         w[k] = (vx0 - wz0 * wy_[k]) * c[k] + (vy0 + wz0 * wx_[k]) * s[k];
       }
       float cvx_last = vx0, cvy_last = vy0, cwz_last = wz0;
+      float smx = vx0, smy = vy0, smw = wz0;   // the smoother's output
 
       for (unsigned int j = 1; j != steps; j++) {
         float & cvx = state.cvx(i, j - 1);
@@ -153,27 +200,63 @@ public:
         cvy_last = cvy;
         cwz_last = cwz;
 
-        // The command the base is acting on at this step.
+        smx += std::clamp(cvx - smx, -sdx, sdx);
+        smy += std::clamp(cvy - smy, -sdy, sdy);
+        smw += std::clamp(cwz - smw, -sdw, sdw);
+        sm_x_[j - 1] = smx;
+        sm_y_[j - 1] = smy;
+        sm_w_[j - 1] = smw;
+
+        // The smoothed command the base is acting on at this step.
         const int src = static_cast<int>(j) - 1 - delay;
-        const float ax = src >= 0 ? state.cvx(i, src) : vx0;
-        const float ay = src >= 0 ? state.cvy(i, src) : vy0;
-        const float aw = src >= 0 ? state.cwz(i, src) : wz0;
+        const float ax = src >= 0 ? sm_x_[src] : vx0;
+        const float ay = src >= 0 ? sm_y_[src] : vy0;
+        const float aw = src >= 0 ? sm_w_[src] : wz0;
+
+        // The one mode the Ranger executes for this twist.
+        float px = ax, py = ay, pw = aw;
+        if (use_modes_) {
+          if (std::abs(ay) > std::abs(aw) * mode_lateral_ref_) {            // parallel
+            pw = 0.0f;
+          } else {
+            py = 0.0f;
+            if (std::abs(aw) > 1e-6f) {
+              const float r = std::abs(ax) / std::abs(aw);
+              if (r < min_turn_radius_) {                                     // spinning
+                px = 0.0f;
+              } else {                                                        // dual Ackermann
+                const float r_cmd = std::max(r, r_ack_min_);
+                const float r_turn = std::max(r_cmd, r_steer_cap_) + r_inner_offset_;
+                pw = std::copysign(std::abs(ax) / r_turn, aw);
+              }
+            }
+          }
+        }
+
+        float wu[4], wv[4], wsp[4], wmax = 0.0f;
+        for (int k = 0; k < 4; k++) {
+          wu[k] = px - pw * wy_[k];
+          wv[k] = py + pw * wx_[k];
+          wsp[k] = std::sqrt(wu[k] * wu[k] + wv[k] * wv[k]);
+          wmax = std::max(wmax, wsp[k]);
+        }
+        // Too slow for any wheel's direction to mean anything: all knuckles
+        // hold and the wheels stop together, as the controller does.
+        const bool hold = wmax < steer_deadband_;
 
         float gate = 1.0f;
         float speed[4];
         for (int k = 0; k < 4; k++) {
-          const float u = ax - aw * wy_[k];
-          const float v = ay + aw * wx_[k];
-          const float sp = std::sqrt(u * u + v * v);
+          const float sp = wsp[k];
           float ud, vd, spd;
-          if (sp < steer_deadband_) {     // too slow to steer by: hold, drive along
+          if (hold || sp < 1e-6f) {
             ud = c[k];
             vd = s[k];
-            spd = u * c[k] + v * s[k];
+            spd = 0.0f;
           } else {
             const float inv = 1.0f / sp;
-            ud = u * inv;
-            vd = v * inv;
+            ud = wu[k] * inv;
+            vd = wv[k] * inv;
             spd = sp;
             if (ud < 0.0f) {              // past +/-90 deg: point forward, spin back
               ud = -ud;
@@ -306,6 +389,11 @@ private:
   double feedback_timeout_{0.5};
   float command_delay_{0.0f};
   float steer_deadband_{0.03f};
+  float smooth_ax_{1.0f}, smooth_ay_{1.0f}, smooth_aw_{2.0f};
+  bool use_modes_{true};
+  float mode_lateral_ref_{0.30f}, min_turn_radius_{0.4764f};
+  float r_ack_min_{0.542f}, r_steer_cap_{0.36f}, r_inner_offset_{0.182f};
+  std::vector<float> sm_x_, sm_y_, sm_w_;   // per-step smoother output, reused
   float sin_hyst_{0.1736f};
   int int_power_{10};
   std::string joint_state_topic_;

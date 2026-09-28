@@ -7,7 +7,9 @@ collision monitor, BT navigator and waypoint follower.
 Needs map -> odom (slam.launch.py) and odom -> base_footprint (the EKF).
 The command chain matches nav2_bringup's: controller and behaviours ->
 cmd_vel_nav -> velocity_smoother -> cmd_vel_smoothed -> collision_monitor
--> cmd_vel, which ranger_4wis_controller.py consumes. nav2_bringup's own
+-> cmd_vel_raw -> ranger_mode_arbiter.py -> cmd_vel, which the Ranger
+driver (or ranger_4wis_controller.py in simulation) consumes. The arbiter
+is needed because the base steers in modes: see its docstring. nav2_bringup's own
 navigation_launch.py is not used because Jazzy's also starts the route and
 docking servers, whose default configs expect files this robot does not
 have, and one lifecycle node failing to activate aborts the whole stack.
@@ -47,6 +49,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'params_file', default_value=os.path.join(share, 'config', 'nav2_params.yaml')),
         *nodes,
+        Node(package='ranger_xarm_bringup', executable='ranger_mode_arbiter.py',
+             name='ranger_mode_arbiter', output='screen',
+             parameters=[{'use_sim_time': use_sim_time}]),
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
              name='lifecycle_manager_navigation', output='screen',
              parameters=[{'use_sim_time': use_sim_time, 'autostart': True,
