@@ -5,6 +5,7 @@ log/
 
 # pulled by `vcs import src < ranger_xarm.repos`, not committed here
 src/xarm_ros2/
+src/kiss-icp/
 
 __pycache__/
 *.pyc

@@ -50,6 +50,8 @@ PATTERNS=(
   "lib/ranger_xarm_gazebo/wheel_odometry.py"
   "lib/ranger_xarm_gazebo/ranger_4wis_controller.py"
   "lib/ranger_xarm_bringup/imu_yaw_bias_corrector.py"
+  "lib/kiss_icp/kiss_icp_node"
+  "lib/ranger_xarm_bringup/lidar_odometry_relay.py"
 )
 for pat in "${PATTERNS[@]}"; do
   pkill -9 -f "$pat"
