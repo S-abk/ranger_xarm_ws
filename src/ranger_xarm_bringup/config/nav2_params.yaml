@@ -19,6 +19,9 @@
 #   acceleration limits are Nav2's defaults (see FollowPath).
 # - Smac 2D plans on the SLAM map, through unknown space if need be.
 # - Velocity smoother and collision monitor limits match the controller.
+# - The base steers in modes (parallel, spinning, dual Ackermann), not with
+#   any twist: ranger_mode_arbiter.py reduces Nav2's output to one mode
+#   before it reaches the robot, and FourWIS predicts the same reduction.
 
 bt_navigator:
   ros__parameters:
@@ -102,6 +105,15 @@ controller_server:
         command_delay: 0.05       # s, command to response (fitted)
         steer_deadband: 0.03      # m/s, as ranger_4wis_controller.py
         fold_hysteresis_deg: 10.0 # as ranger_4wis_controller.py
+        smoother_accel: [1.0, 1.0, 2.0]   # velocity_smoother max_accel, below
+        # The Ranger's steering modes (ranger_mode_arbiter.py, AgileX driver)
+        use_modes: true
+        mode_lateral_ref: 0.30
+        min_turn_radius: 0.4764
+        agilex_wheelbase: 0.494
+        agilex_track: 0.364
+        max_steer_ackermann: 0.601
+        ackermann_steer_is_inner: true
         joint_state_topic: /joint_states
         feedback_timeout: 0.5
       visualize: false
@@ -323,7 +335,7 @@ collision_monitor:
     base_frame_id: base_footprint
     odom_frame_id: odom
     cmd_vel_in_topic: cmd_vel_smoothed
-    cmd_vel_out_topic: cmd_vel
+    cmd_vel_out_topic: cmd_vel_raw        # -> ranger_mode_arbiter.py -> cmd_vel
     state_topic: collision_monitor_state
     transform_tolerance: 0.2
     source_timeout: 1.0

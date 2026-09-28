@@ -16,6 +16,8 @@ install(PROGRAMS
   scripts/imu_yaw_bias_corrector.py
   scripts/lidar_odometry_relay.py
   scripts/lidar_terrain_filter.py
+  scripts/arm_pose.py
+  scripts/ranger_mode_arbiter.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
