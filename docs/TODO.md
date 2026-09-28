@@ -822,25 +822,30 @@ wheels + gyro in the same run:
 
 | sim, world | conditions | fused | wheels + gyro | KISS-ICP alone |
 |---|---|---|---|---|
-| gz rough_room | RTF 0.3, lidar 10 Hz | 0.05, 1.25, 1.12, 0.24 | 1.53, 2.20, 1.49, 1.18 | 0.05, 1.17, 1.06, 0.24 |
-| gz rough_room | RTF 1, default DDS, lidar 5.6 Hz | 0.30, 1.21, 1.12, 1.37 | 1.90, 1.27, 1.10, 2.08 | 0.30, 1.22, 1.13, 1.39 |
-| gz rough_room | RTF 0.85, large-SHM DDS, lidar 10 Hz | **30.4, 27.2, 26.8, 27.6** | 1.83, 1.53, 1.73, 1.05 | same as fused |
-| Isaac rough ground + room | RTF 0.45, large-SHM DDS, lidar 10 Hz | 1.27, 1.34, 3.07 | 1.52, 1.61, 1.58 | 1.24, 1.34, 3.07 |
+| gz rough_room | default DDS, lidar ~5.6 Hz, noise-free | 0.05, 1.25, 1.12, 0.24, 0.30, 1.21, 1.12, 1.37 | 1.53, 2.20, 1.49, 1.18, 1.90, 1.27, 1.10, 2.08 | 0.05, 1.17, 1.06, 0.24, 0.30, 1.22, 1.13, 1.39 |
+| gz rough_room | large-SHM DDS, lidar 10 Hz, noise-free | **30.4, 27.2, 26.8, 27.6** | 1.83, 1.53, 1.73, 1.05 | same as fused |
+| gz outdoor_terrain_room | large-SHM DDS, lidar 10 Hz, noise-free | 2.77, 2.70, 2.71 | 1.56, 1.46, 0.21 | 2.83, 2.70, 2.71 |
+| gz outdoor_terrain_room | large-SHM DDS, lidar 10 Hz, 1 cm noise | 0.28, 0.48, 0.29 | 1.10, 1.25, 0.15 | 0.28, 0.48, 0.29 |
+| Isaac rough ground + room | large-SHM DDS, lidar 10 Hz | 1.27, 1.34, 3.07 | 1.52, 1.61, 1.58 | 1.24, 1.34, 3.07 |
+| Isaac outdoor terrain + room | large-SHM DDS, lidar 10 Hz | 1.30, 1.25, 1.29 | 0.60, 1.18, 0.80 | 1.31, 1.23, 1.31 |
 | gz empty_ground, rough_ground; Isaac rough ground | — | identical to wheels + gyro (lidar never trusted) | 0.04 / 2.2 / 1.5 - 2.8 | 28 - 186 |
 
-In Isaac the fused heading error was 0.01 - 0.05 deg against 3.1 - 3.2 deg
-for wheels + gyro: Isaac's gyro spikes on the bumps, and there the lidar
+In Isaac the fused heading error was 0.01 - 0.13 deg against 1.0 - 3.2 deg
+for wheels + gyro: Isaac's gyro spikes on rough ground, and there the lidar
 heading is worth more than the position.
 
-The bold row is the one failure the relay cannot see. gz near real time,
-with the cloud arriving at its full 10 Hz, gives KISS-ICP scans whose
-content lags their stamps (5 - 7 % of its steps show no motion while the
-robot moves); it under-counts distance by 13 - 15 % with a perfect heading,
-and a slow scale error passes both checks (heading fine, ~5 mm per step).
-Wheel distance cannot referee it either, because wheel slip over-counts and
-looks the same. At RTF 0.3 the same 10 Hz scans are fine; Isaac renders in
-lockstep with physics and does not show it. Nothing suggests a real Ouster
-produces stale scans, but a scale error from any cause would go through.
+The bold row is the one failure the relay cannot see: KISS-ICP under-counted
+distance by 13 - 15 % with a perfect heading, and a slow scale error passes
+both checks (heading fine, ~5 mm per step). Wheel distance cannot referee
+it either, because wheel slip over-counts and looks the same. The cause was
+the gz lidar having no noise at all: its floor returns are perfect rings
+that move with the sensor, and each registration was pulled slightly
+towards "not moving". Fed the full 10 Hz, that compounds; at the ~5.6 Hz
+the default DDS let through it mostly did not. Hashing the clouds during a
+drive ruled out repeated scans (96 of 96 distinct). With the 1 cm Gaussian
+range noise of a real Ouster (now in `sensors_gazebo.xacro`) the same
+terrain gives 0.28 - 0.48 %. A scale error from any other cause would still
+go through.
 
 Fault injection (floor-cropped cloud at real time, which makes KISS-ICP lose
 its z/pitch constraint): KISS-ICP 13.95 % / -48 deg -> fused 0.37 %;
@@ -862,9 +867,10 @@ What was tried and measured on the way, so nobody retries it:
   EKF's odometry history and holds scans until the EKF catches up.
 - **A tight per-step translation check** ratcheted error in (see the relay
   docstring). It now only catches gross jumps (0.5 m).
-- **Cropping the floor** removed a saw-tooth bias at 4 Hz on flat ground
+- **Cropping the floor** removed the saw-tooth bias on flat ground
   (KISS-ICP 1.0 % -> 0.02 %), but on rough ground KISS-ICP then failed every
-  trial. At 10 Hz the uncropped cloud is fine, so there is no crop.
+  trial. The bias was the noise-free simulated floor, which lidar noise now
+  breaks up, so there is no crop.
 
 Simulation limits, not properties of the design:
 
@@ -874,10 +880,14 @@ Simulation limits, not properties of the design:
   `RcvbufErrors` climbing). `ranger_xarm_bringup/config/fastdds_large_shm.xml`
   exported in every process fixes it (10 Hz in both). The same applies to
   the real Ouster driver and KISS-ICP in separate processes.
-- For gz lidar evaluation, slow the world to RTF 0.3
-  (`gz service -s /world/<w>/set_physics`, `real_time_factor: 0.3`); see
-  the scale error above. On `empty_ground` that call left the robot unable
-  to drive; not investigated.
+- Every world `make_surface_worlds.py` writes keeps the base file's name,
+  `empty_ground`, so gz services live at `/world/empty_ground/...` whatever
+  the file. An earlier "RTF 0.3" run here called
+  `/world/rough_room/set_physics`, which does not exist; `gz service` timed
+  out and still exited 0, so those runs were at normal speed, and a
+  conclusion drawn from them ("evaluate gz at RTF 0.3") has been withdrawn.
+  The one call that did apply, on `empty_ground`, left the robot unable to
+  drive; not investigated.
 - Isaac published the Ouster's transform under its prim name (`sensor`), so
   nothing connected `os_lidar` to the robot and KISS-ICP reported motion
   in the lidar's yawed frame, i.e. backwards; the scan origin was also
@@ -890,12 +900,49 @@ Simulation limits, not properties of the design:
   0.1 s on bumps; each false alarm re-anchored onto the EKF's error. Real
   registration failures jumped 16 - 48 deg, so it is now 5 deg.
 - `rough_room`'s bump lattice (0.275 m effective x period) makes KISS-ICP's
-  position flip by ~0.12 - 0.27 m and back.
+  position flip by ~0.12 - 0.27 m and back. The outdoor terrain has no
+  lattice; see its section below.
 
 Untested: the real robot. On hardware, export `fastdds_large_shm.xml` in
 the driver's and the EKF's shells and check `/ouster/points` arrives at the
 sensor rate, check the Ouster's `t` field reaches KISS-ICP (deskew), and
 that a raised arm does not enter the 0.8 m `lidar_min_range`.
+
+## Added: outdoor rough terrain (`outdoor_terrain.sdf`, Isaac `--terrain`)
+
+The bump worlds sit on a lattice, and the wheels (y = +/-0.185 m) run
+between its rows (y = 0, +/-0.55 m, each +/-0.08 m wide). On the scored
+drive a wheel was on a bump for 25 % of the distance and never on the first
+straight; the rest was flat floor. It was seen driving straight past every
+bump in the Isaac GUI.
+
+`models/outdoor_terrain` is built in Blender by
+`scripts/make_outdoor_terrain.py` (seeded; the outputs are committed, so
+Blender is only needed to change it), from CC0 Poly Haven assets
+(`ATTRIBUTION.md`):
+
+- undulation: band-limited noise, 1.5 - 10 m wavelengths, 3 cm std;
+- surface: the scanned displacement of `dry_ground_rocks` (a 4 x 4 m patch
+  of real ground) at the mesh's 4 cm spacing, plus fine noise;
+- 197 scanned stones (`rock_07`, `rock_09`, `stone_01`, `moon_rock_*`),
+  Poisson-disc scattered, randomly rotated, partly buried, 1.5 - 5 cm
+  proud (half the wheel radius at most);
+- a flat pad at the origin for repeatable resets, and edges that fade to
+  the ground plane. Heights 0 - 0.20 m; slope over 0.5 m median 2.7 deg,
+  99th percentile 11.6 deg.
+
+One mesh (78k triangles) goes to gz as `terrain.glb` (visual and
+collision) and to Isaac as `terrain.usdc` (triangle-mesh collision), both
+at mu 1.5 like every other world, so the engines drive the same geometry.
+`outdoor_terrain_room.sdf` / `--terrain --room` add the room's walls and
+tanks for lidar odometry. gz still runs at 0.81x real time with it; the
+robot rests on the pad at the pad's height.
+
+On the scored drive a wheel is on a stone for 21 % of the distance (8
+stones), and all four are on undulating, rough ground all the time: in
+Isaac a 2.4 m straight rose 3 cm and pitched -6.4 to +1.3 deg, where the
+lattice's first straight was flat. Scores are in the lidar table above;
+wheel odometry alone is 3.7 - 5.9 % in gz and 1.1 - 3.9 % in Isaac.
 
 ## Watch: the non-finite guard in wheel_odometry.py is untested in anger
 

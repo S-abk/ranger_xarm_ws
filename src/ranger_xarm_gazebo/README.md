@@ -185,6 +185,15 @@ So: use `empty_ground` to check that an estimator is correct, and
 `rough_ground` to check that it survives. A result from the flat world
 says nothing about robustness.
 
+**`rough_ground` is a lattice, and the robot can miss it.** Its rows sit
+at y = 0 and +/-0.55 m and the wheels at y = +/-0.185 m, so a straight
+start runs between them; on the scored drive a wheel was on a bump for a
+quarter of the distance. `outdoor_terrain.sdf` is the realistic
+alternative: a Blender-built mesh from scanned ground and scanned stones
+(`models/outdoor_terrain`, `scripts/make_outdoor_terrain.py`), undulating
+everywhere, with no pattern to drive around, and the same mesh is Isaac's
+`--terrain`. `outdoor_terrain_room.sdf` adds walls for lidar odometry.
+
 **Error is not the same as drift.** The gz numbers above are from the
 empty world. The same legs run in `sensor_test.sdf` gave 1.94% and +2.29
 deg, because the robot grazed a box and the wheels spun — which is

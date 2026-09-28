@@ -70,6 +70,11 @@
               <max>50.0</max>
               <resolution>0.001</resolution>
             </range>
+            <noise>
+              <type>gaussian</type>
+              <mean>0.0</mean>
+              <stddev>0.01</stddev>
+            </noise>
           </lidar>
         </sensor>
       </gazebo>

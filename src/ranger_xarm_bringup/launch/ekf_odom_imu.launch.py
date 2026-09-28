@@ -38,15 +38,16 @@ big for Fast DDS's default shared memory: it falls back to UDP and loses
 scans. Export config/fastdds_large_shm.xml as FASTRTPS_DEFAULT_PROFILES_FILE
 in every process that publishes or consumes the cloud (see that file).
 
-Measured in simulation (docs/TODO.md), on rough ground inside a room: the
-fused estimate follows KISS-ICP, 0.05 - 1.3 % of path in gz and 1.3 - 3.1 %
-in Isaac, against 1.1 - 2.2 % for wheels + gyro, with heading error cut
-from ~3 deg to under 0.1 deg in Isaac; on featureless ground the relay never
-trusts the lidar and the result equals wheels + gyro exactly. What the
-relay cannot catch is a slow scale error: in gz near real time the lidar's
-content lags its stamps, KISS-ICP under-counts distance by ~15 % with a
-perfect heading, and the fused estimate inherits it. Evaluate gz lidar
-odometry at a real-time factor of 0.3.
+Measured in simulation (docs/TODO.md): the fused estimate follows KISS-ICP,
+so it is as good as KISS-ICP is. On the outdoor terrain in gz that was
+0.28 - 0.48 % of path against 0.15 - 1.25 % for wheels + gyro; in Isaac
+1.2 - 1.3 % against 0.6 - 1.2 %, with heading error cut from 1 - 1.6 deg to
+0.02 - 0.13 deg. On featureless ground the relay never trusts the lidar and
+the result equals wheels + gyro exactly. What the relay cannot catch is a
+slow scale error, since heading and each step still agree: in gz a
+noise-free lidar at the full 10 Hz made KISS-ICP under-count distance by
+up to 15 %, and the fused estimate inherited it. The gz Ouster now has the
+1 cm range noise a real one has.
 
 KISS-ICP is built from source; see ranger_xarm.repos.
 """
