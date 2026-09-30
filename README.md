@@ -5,7 +5,7 @@ xArm 6** mobile manipulator, with an Ouster OS0 lidar, an Intel RealSense D435
 and an RPLIDAR A1 on a sensor gantry.
 
 It gives you the robot and nothing else: description, MoveIt configuration,
-Gazebo simulation, sensor and base bringup. There is no application in here.
+Gazebo and NVIDIA Isaac Sim simulation, sensor and base bringup. There is no application in here.
 Build yours as a package that depends on these.
 
 The **same URDF drives simulation and hardware.** Simulation changes three
@@ -91,8 +91,70 @@ ros2 launch ranger_xarm_moveit_config fake_execution.launch.py  # mock execution
 | `ranger_xarm_description` | URDF/xacro and CAD meshes. `base_link` is the CAD reference; `base_footprint` is a separate frame at the lowest wheel-tread point — they are not interchangeable. | no |
 | `ranger_xarm_moveit_config` | MoveIt 2. Planning group `xarm6` spans `xarm_link_base -> xarm_link_tcp`; `xarm_gripper` is separate. | no |
 | `ranger_xarm_gazebo` | gz simulation: world, spawn, `gz_ros2_control`. | no |
+| `ranger_xarm_isaac` | Isaac Sim: xacro-to-USD conversion, the simulator bridge, sensors, ros2_control and MoveIt against it. | no (needs Isaac Sim) |
 | `ranger_xarm_sensors` | `robot.launch.py`, the physical robot composed in one file. | yes |
 | `ranger_xarm_bringup` | CAN driver bringup, `odom -> base_footprint`, cmd_vel deadman. | yes |
+
+## Isaac Sim
+
+`ranger_xarm_isaac` runs the same robot in NVIDIA Isaac Sim (verified on
+5.1.0, installed at `~/isaacsim`). The USD is generated from the xacro, never
+committed; the arm, gripper and 4WIS base are driven through ros2_control's
+topic-based hardware interface (`topic_based_hardware_interfaces`, pulled by
+`ranger_xarm.repos`; build with `--packages-up-to` as below, since that
+repository's `joint_command_topic_hardware_interface` does not build against
+Jazzy's `control_msgs`), and the Ouster OS0 (with its IMU), RPLIDAR A1M8 and
+D435 publish on the same topics and frames as the real drivers. Details and
+pitfalls: `src/ranger_xarm_isaac/README.md`.
+
+```bash
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-up-to ranger_xarm_isaac
+source install/setup.bash
+P=$(ros2 pkg prefix ranger_xarm_isaac)
+USD=$P/share/ranger_xarm_isaac/usd/ranger_xarm_wheeled.usd
+
+# The Ouster cloud needs the large shared-memory Fast DDS profile. Export it
+# in EVERY shell below (Isaac's included) or most scans are dropped.
+export FASTRTPS_DEFAULT_PROFILES_FILE=~/ranger_xarm_ws/src/ranger_xarm_bringup/config/fastdds_large_shm.xml
+
+# 1. Generate the USD, with the wheeled base (Isaac's own interpreter)
+~/isaacsim/python.sh $P/lib/ranger_xarm_isaac/urdf_to_usd.py --force --output $USD \
+    use_wheels:=true fix_base_to_world:=false wheels_command_interface:=velocity
+
+# 2. Start Isaac: robot on a flat ground plane, sensors, clock
+~/isaacsim/python.sh $P/lib/ranger_xarm_isaac/isaac_bringup.py --usd $USD
+#    optionally in an environment: --scene hospital --spawn 2.5,0,0
+
+# 3. ros2_control, the 4WIS controller, wheel odometry
+ros2 launch ranger_xarm_isaac control.launch.py drive_base:=true
+
+# 4. Drive it
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
+# 5. MoveIt for the arm (optional)
+ros2 launch ranger_xarm_isaac moveit.launch.py start_rviz:=true
+```
+
+`/cmd_vel` is executed the way the real Ranger's AgileX driver executes it:
+`linear.y` crabs (all wheels parallel), a turn tighter than the minimum radius
+spins in place, anything else is dual Ackermann, and the base stops 0.5 s
+after the last command. `/odom` is wheel odometry; `/ground_truth/odom` is
+Isaac's chassis pose and `/ground_truth/contacts` what the robot touches. For
+the arm alone, run `urdf_to_usd.py` with no arguments and start
+`isaac_bringup.py` and `control.launch.py` without `--usd` / `drive_base`.
+
+**The suspension is on by default, and its numbers are estimates.** Each
+wheel corner rides on a sprung, damped prismatic joint (`ranger_wheels.xacro`),
+but AgileX publishes no suspension travel, spring rate or damping for the
+Ranger Mini 3.0, so the values are estimated, not measured: 15 mm of droop and
+25 mm of bump about the static ride height, a 20 kN/m spring with 12.5 mm of
+static sag, and 570 N s/m of damping. Behaviour that depends on how the
+wheels load and unload — side slopes, crests, one wheel lifting — is only as
+good as those numbers; replace them with measurements from your robot before
+trusting it there. To run with a rigid chassis instead, pass
+`use_suspension:=false` to both `urdf_to_usd.py` and `control.launch.py`
+(the USD and the controllers must agree on which joints exist).
 
 ## Running the physical robot
 
