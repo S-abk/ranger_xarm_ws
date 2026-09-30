@@ -34,14 +34,15 @@ robot would scrub sideways through the transition.
 With steer_modes 'agilex' (the default) a twist is first reduced to the
 one mode the real Ranger would execute for it -- parallel, spinning or dual
 Ackermann, as AgileX's ranger_ros2 driver chooses -- so the four wheels
-always hold one of those geometries. When every wheel's commanded speed is
-below steer_deadband the command's direction is undefined (atan2(0,0)) or
-noise, so the knuckles hold their angles together and the wheels stop. Otherwise
-the wheels snap to zero every time the robot stops, which drags the
-stationary robot sideways, and a planner's small corrections swing the
-knuckles back and forth while the base goes nowhere. Near the +/-90 degree
-fold the knuckle keeps its side (fold_hysteresis_deg) rather than swinging a
-half turn for a small change of direction.
+always hold one of those geometries, and with no command (a zero twist, or
+none for cmd_timeout) the knuckles return to straight ahead, as the real
+Ranger's do; every stop therefore costs the next move its knuckle swing.
+Small non-zero commands are executed as the driver would execute them, so a
+caller that wants the base to stay put should send a zero twist. In 'free'
+mode, when every wheel's commanded speed is below steer_deadband the
+knuckles instead hold their angles together and the wheels stop. Near the
++/-90 degree fold the knuckle keeps its side (fold_hysteresis_deg) rather
+than swinging a half turn for a small change of direction.
 """
 import math
 
@@ -105,12 +106,11 @@ class Ranger4WIS(Node):
         # body twist. 0 disables.
         self.declare_parameter('max_wheel_accel', 1.0,
                                ParameterDescriptor(dynamic_typing=True))
-        # Below this speed at every wheel (m/s) the command's direction is
-        # noise: a planner's small corrections near a goal point anywhere,
-        # and chasing them swung the knuckles back and forth by up to 90 deg
-        # while the base stood still (seen in Isaac under Nav2, which then
-        # gave up with "failed to make progress"). All knuckles then hold
-        # and the wheels stop, together, keeping one steering geometry.
+        # 'free' mode only. Below this speed at every wheel (m/s) the
+        # command's direction is noise: small corrections near a goal point
+        # anywhere, and chasing them swung the knuckles back and forth by up
+        # to 90 deg while the base stood still. All knuckles then hold and
+        # the wheels stop, together, keeping one steering geometry.
         self.declare_parameter('steer_deadband', 0.03,
                                ParameterDescriptor(dynamic_typing=True))
         # A target crossing the +/-90 deg fold (crab left <-> crab right,
@@ -119,6 +119,31 @@ class Ranger4WIS(Node):
         # its side and the wheel spins the other way instead.
         self.declare_parameter('fold_hysteresis_deg', 10.0,
                                ParameterDescriptor(dynamic_typing=True))
+        # Parking brake (velocity mode): a stop that has lasted brake_delay
+        # holds each wheel at the angle it had then, by commanding a speed
+        # back towards it (brake_gain per second of angle error, at most
+        # brake_max rad/s), as the real hub motors' controllers hold position
+        # at zero speed. Parked on a 10 deg ramp the simulated wheels rolled
+        # back at ~20 mm/s under a zero speed command whatever the drive
+        # gains were; a hold on position does not depend on them.
+        # Speed loop (velocity mode): the simulator's wheel drives yield under
+        # load (a zero speed command rolled back at ~20 mm/s on a 10 deg ramp;
+        # 0.04 m/s uphill did not move the base), so the error between the
+        # commanded and measured wheel speed is integrated into the command
+        # (speed_ki per second, at most speed_i_max rad/s), as a hub motor's
+        # own PI speed loop would. Reset at a stop and on a change of sign.
+        # A wheel turning against its command (slipping, or off the ground)
+        # does not integrate, and no wheel's integral exceeds the median of
+        # the four by more than speed_i_spread: one wheel wound up to +3
+        # rad/s alone (0.75 m/s commanded against 0.5) while the base
+        # climbed over a crest, and the base went over backwards.
+        self.declare_parameter('speed_ki', 4.0, ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter('speed_i_max', 3.0, ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter('speed_i_spread', 0.5, ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter('parking_brake', True)
+        self.declare_parameter('brake_delay', 0.3, ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter('brake_gain', 5.0, ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter('brake_max', 0.5, ParameterDescriptor(dynamic_typing=True))
         # 'agilex': execute a twist the way the real Ranger does. Its driver
         # (agilexrobotics/ranger_ros2, TwistCmdCallback) never runs a general
         # (vx, vy, wz): it picks ONE mode per command -- parallel if
@@ -177,6 +202,17 @@ class Ranger4WIS(Node):
         self.max_accel = float(self.get_parameter('max_wheel_accel').value)
         self.steer_deadband = float(self.get_parameter('steer_deadband').value)
         self.fold_hyst = math.radians(float(self.get_parameter('fold_hysteresis_deg').value))
+        self.speed_ki = float(self.get_parameter('speed_ki').value)
+        self.speed_i_max = float(self.get_parameter('speed_i_max').value)
+        self.speed_i_spread = float(self.get_parameter('speed_i_spread').value)
+        self.speed_i = {c: 0.0 for c in CORNERS}
+        self.speed_sign = {c: 0.0 for c in CORNERS}
+        self.brake = bool(self.get_parameter('parking_brake').value)
+        self.brake_delay = float(self.get_parameter('brake_delay').value)
+        self.brake_gain = float(self.get_parameter('brake_gain').value)
+        self.brake_max = float(self.get_parameter('brake_max').value)
+        self.stopped_for = 0.0
+        self.brake_ref = None               # wheel angles held while parked
         self.steer_modes = self.get_parameter('steer_modes').value
         self.ag_l = float(self.get_parameter('agilex_wheelbase').value)
         self.ag_w = float(self.get_parameter('agilex_track').value)
@@ -200,6 +236,7 @@ class Ranger4WIS(Node):
         }
         self.last_steer = {c: 0.0 for c in CORNERS}
         self.wheel_vel = {c: 0.0 for c in CORNERS}
+        self.wheel_pos = {c: None for c in CORNERS}
         # Measured knuckle angles, for the steering gate. None until the
         # first joint state arrives; the gate stays open until then rather
         # than holding the wheels still on a guess.
@@ -257,12 +294,47 @@ class Ranger4WIS(Node):
             if 'velocity' in iv.interface_names:
                 self.wheel_vel[c] = iv.values[iv.interface_names.index('velocity')]
                 self.got_feedback = True
+            if 'position' in iv.interface_names:
+                self.wheel_pos[c] = iv.values[iv.interface_names.index('position')]
 
     def _check_feedback(self):
         if not self.got_feedback:
             self.get_logger().warn(
                 'no wheel velocity on /dynamic_joint_states; the speed loop '
                 'is running open loop and the base will not brake')
+
+    def _speed_loop(self, stopped, speeds):
+        """Add the integral of the wheel speed error to the command."""
+        if self.speed_ki <= 0.0 or not self.got_feedback:
+            return speeds
+        for c, w in zip(CORNERS, speeds):
+            sign = math.copysign(1.0, w)
+            if stopped or abs(w) < 1e-6 or sign != self.speed_sign[c]:
+                self.speed_i[c] = 0.0                    # stopped, or the command reversed
+                self.speed_sign[c] = sign if abs(w) >= 1e-6 else 0.0
+            elif self.wheel_vel[c] * w >= 0.0:           # not turning against the command
+                self.speed_i[c] = max(-self.speed_i_max, min(
+                    self.speed_i_max, self.speed_i[c] + self.speed_ki * (w - self.wheel_vel[c]) * self.dt))
+        if self.speed_i_spread > 0.0:
+            mags = sorted(abs(self.speed_i[c]) for c in CORNERS)
+            cap = 0.5 * (mags[1] + mags[2]) + self.speed_i_spread
+            for c in CORNERS:
+                self.speed_i[c] = max(-cap, min(cap, self.speed_i[c]))
+        return [w + self.speed_i[c] for c, w in zip(CORNERS, speeds)]
+
+    def _parking_brake(self, stopped, speeds):
+        """Hold the wheels where they were once a stop has lasted brake_delay."""
+        if not stopped or not self.brake or any(self.wheel_pos[c] is None for c in CORNERS):
+            self.stopped_for, self.brake_ref = 0.0, None
+            return speeds
+        self.stopped_for += self.dt
+        if self.stopped_for < self.brake_delay:
+            return speeds
+        if self.brake_ref is None:
+            self.brake_ref = {c: self.wheel_pos[c] for c in CORNERS}
+        return [max(-self.brake_max, min(self.brake_max,
+                                          -self.brake_gain * (self.wheel_pos[c] - self.brake_ref[c])))
+                for c in CORNERS]
 
     def _gate(self, steers, speeds):
         """Scale velocity-mode wheel speeds by knuckle convergence.
@@ -338,13 +410,22 @@ class Ranger4WIS(Node):
             vxi = vx - wz * yi
             vyi = vy + wz * xi
             targets.append((c, vxi, vyi, math.hypot(vxi, vyi)))
-        # Too slow for any wheel's direction to mean anything: every knuckle
-        # holds where it is and the wheels stop, together, so the set keeps
-        # one geometry (each wheel holding on its own left them mismatched).
-        hold = max(tg[3] for tg in targets) < max(self.steer_deadband, 1e-6)
+        # With no command the real Ranger's wheels snap back to straight
+        # ahead (reported on the robot; the driver sends a zero twist as dual
+        # Ackermann with steer 0), so every stop costs the next move its
+        # knuckle swing again. In 'free' mode, too slow for any wheel's
+        # direction to mean anything: the knuckles hold together instead.
+        stopped = max(tg[3] for tg in targets) < 1e-6
+        rest_forward = self.steer_modes == 'agilex' and stopped
+        hold = (self.steer_modes != 'agilex'
+                and max(tg[3] for tg in targets) < max(self.steer_deadband, 1e-6))
         for c, vxi, vyi, speed in targets:
             last = self.last_steer[c]
-            if hold:
+            if rest_forward:
+                angle = 0.0
+                omega = 0.0
+                self.last_steer[c] = 0.0
+            elif hold:
                 angle = last
                 omega = 0.0
             else:
@@ -391,6 +472,8 @@ class Ranger4WIS(Node):
         if self.mode == 'velocity':
             speeds = self._gate(steers, speeds)
             speeds = self._limit_accel(speeds)
+            speeds = self._speed_loop(stopped, speeds)
+            speeds = self._parking_brake(stopped, speeds)
 
         self.steer_pub.publish(Float64MultiArray(data=steers))
         self.wheel_pub.publish(Float64MultiArray(data=speeds))
