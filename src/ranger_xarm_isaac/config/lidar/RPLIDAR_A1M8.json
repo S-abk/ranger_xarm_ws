@@ -1,0 +1,52 @@
+{
+    "_comment0": "SLAMTEC RPLIDAR A1M8. Isaac ships a SLAMTEC profile but it is the S2E, which is a different sensor: 30 m range and 10 Hz against the A1M8's 12 m and 5.5 Hz. Using it would have quietly given this robot a lidar it does not own.",
+    "_comment1": "Range, scan rate and sample rate are the A1M8 datasheet figures. reportRateBaseHz 8000 at scanRateBaseHz 5.5 gives ~1454 samples/rev, i.e. ~0.25 deg, which is what the sample duration implies; SLAMTEC's headline '<=1 deg angular resolution' is the conservative spec rather than the achieved one.",
+    "_comment2": "The optical and error terms (reflectance, pulse time, azimuth/elevation error) are NOT in the A1M8 datasheet and are carried over from Isaac's S2E profile. They are plausible for a 905 nm class triangulation scanner but they are not measured, so treat returns as geometry rather than photometry.",
+    "_comment3": "The A1M8 emitter is 785 nm, not the S2E's 905 nm.",
+    "class": "sensor",
+    "type": "lidar",
+    "name": "RPLIDAR A1M8",
+    "driveWorksId": "GENERIC",
+    "profile":
+    {
+        "scanType": "rotary",
+        "intensityProcessing": "normalization",
+        "rotationDirection": "CW",
+        "rayType": "IDEALIZED",
+
+        "nearRangeM": 0.15,
+        "farRangeM": 12.0,
+        "minDistBetweenEchos": 0.05,
+
+        "rangeResolutionM": 0.013,
+        "rangeAccuracyM": 0.02,
+
+        "avgPowerW": 0.004,
+        "minReflectance": 0.1,
+        "minReflectanceRange": 10.0,
+        "wavelengthNm": 785.0,
+        "pulseTimeNs": 5,
+
+        "azimuthErrorMean": 0.0,
+        "azimuthErrorStd": 0.0,
+        "elevationErrorMean": 0.0,
+        "elevationErrorStd": 0.0,
+
+        "maxReturns": 1,
+
+        "scanRateBaseHz": 5.5,
+        "reportRateBaseHz": 8000,
+
+        "numberOfEmitters": 1,
+        "emitterStateCount": 1,
+        "emitterStates": [
+        {
+          "azimuthDeg": [0],
+          "elevationDeg": [0],
+          "fireTimeNs": [0]
+        }
+        ],
+
+        "intensityMappingType": "LINEAR"
+    }
+}

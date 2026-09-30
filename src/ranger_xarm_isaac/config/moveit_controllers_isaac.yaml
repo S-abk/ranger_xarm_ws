@@ -1,0 +1,41 @@
+# MoveIt -> controller mapping for the Isaac bring-up.
+#
+# Needed as a separate file because the controller NAMES differ. The
+# existing maps in ranger_xarm_moveit_config expect the unprefixed
+# `xarm6_traj_controller` that fake_execution spawns, and on hardware a
+# `xarm_gripper` GripperCommand proxy that forwards to UFACTORY's native
+# server. Neither exists here: control.launch.py reuses xarm's own
+# controller yaml rewriter, which applies the `xarm_` prefix, and the
+# gripper is a plain joint_trajectory_controller because Isaac has no
+# UFACTORY driver to proxy to.
+#
+# The joint lists and the groups they serve are unchanged; only the
+# controller names and the gripper's interface type differ.
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - xarm_xarm6_traj_controller
+    - xarm_xarm_gripper_traj_controller
+
+  xarm_xarm6_traj_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - xarm_joint1
+      - xarm_joint2
+      - xarm_joint3
+      - xarm_joint4
+      - xarm_joint5
+      - xarm_joint6
+
+  # FollowJointTrajectory, not GripperCommand: this is the same
+  # joint_trajectory_controller the gz sim uses, driving drive_joint,
+  # with the five followers derived downstream by joint_command_merger.
+  xarm_xarm_gripper_traj_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - xarm_drive_joint
