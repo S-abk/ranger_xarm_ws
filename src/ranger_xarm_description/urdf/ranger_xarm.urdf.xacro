@@ -58,6 +58,9 @@
        real robot wants the frames without them. -->
   <xacro:arg name="gz_sensors" default="false"/>
   <xacro:arg name="use_wheels" default="false"/>
+  <!-- A sprung vertical joint per corner (the swing-arm suspension); see
+       ranger_wheels.xacro. -->
+  <xacro:arg name="use_suspension" default="true"/>
   <xacro:arg name="fix_base_to_world" default="true"/>
   <xacro:arg name="wheels_ros2_control_plugin" default="gz_ros2_control/GazeboSimSystem"/>
   <!-- How ros2_control commands the wheel joints. effort: torque, with the
@@ -94,10 +97,12 @@
   </xacro:if>
 
   <xacro:if value="$(arg use_wheels)">
-    <xacro:ranger_wheels parent="base_link" ground_z="${ground_z_nom}"/>
+    <xacro:ranger_wheels parent="base_link" ground_z="${ground_z_nom}"
+      suspension="$(arg use_suspension)"/>
     <xacro:ranger_wheels_ros2_control name="ranger_base"
       plugin="$(arg wheels_ros2_control_plugin)"
-      wheel_command="$(arg wheels_command_interface)"/>
+      wheel_command="$(arg wheels_command_interface)"
+      suspension="$(arg use_suspension)"/>
   </xacro:if>
 
   <!-- Ground-projection reference, and the ROOT of the robot.
