@@ -44,9 +44,9 @@
   <exec_depend>rviz2</exec_depend>
 
   <!-- Isaac Sim itself is deliberately not a dependency. It is installed
-       out of tree (~/isaacsim) and runs under its own interpreter, so
+       out of tree and runs under its own interpreter, so
        rosdep cannot resolve it and colcon must not try. urdf_to_usd.py is
-       run with isaacsim's python.sh, not the system python. -->
+       run with Isaac Sim's own interpreter ($ISAACSIM_PYTHON_EXE), not the system python. -->
 
   <export>
     <build_type>ament_cmake</build_type>

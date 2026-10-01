@@ -3,7 +3,7 @@
 
 Start the three in order:
 
-    ~/isaacsim/python.sh .../lib/ranger_xarm_isaac/isaac_bringup.py
+    $ISAACSIM_PYTHON_EXE .../lib/ranger_xarm_isaac/isaac_bringup.py
     ros2 launch ranger_xarm_isaac control.launch.py
     ros2 launch ranger_xarm_isaac moveit.launch.py
 

@@ -4,7 +4,7 @@
 Run under Isaac's interpreter, with the workspace sourced:
 
     source /opt/ros/jazzy/setup.bash && source install/setup.bash
-    ~/isaacsim/python.sh $(ros2 pkg prefix ranger_xarm_isaac)/lib/\
+    $ISAACSIM_PYTHON_EXE $(ros2 pkg prefix ranger_xarm_isaac)/lib/\
 ranger_xarm_isaac/isaac_bringup.py
 
 This is the simulator half. The ROS half (controller_manager, the
@@ -114,7 +114,7 @@ if not os.path.exists(usd_path):
     sys.exit(
         f'no USD at {usd_path}\n'
         'Generate it first:\n'
-        f'    ~/isaacsim/python.sh {isaac_share}/../../lib/ranger_xarm_isaac/urdf_to_usd.py'
+        f'    $ISAACSIM_PYTHON_EXE {isaac_share}/../../lib/ranger_xarm_isaac/urdf_to_usd.py'
     )
 
 from isaacsim import SimulationApp  # noqa: E402  (must precede any omni import)

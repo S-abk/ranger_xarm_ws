@@ -4,7 +4,7 @@
 Run under Isaac's interpreter, not the system one; it needs the Kit
 runtime that only that interpreter sets up:
 
-    ~/isaacsim/python.sh $(ros2 pkg prefix ranger_xarm_isaac)/lib/\
+    $ISAACSIM_PYTHON_EXE $(ros2 pkg prefix ranger_xarm_isaac)/lib/\
 ranger_xarm_isaac/urdf_to_usd.py
 
 The USD is a BUILD ARTIFACT and is gitignored. It is never the source of
@@ -34,7 +34,7 @@ except ModuleNotFoundError:
         "Isaac's python.sh does not source your ROS workspace, so source it\n"
         "first, in the same shell:\n"
         "    source /opt/ros/jazzy/setup.bash && source install/setup.bash\n"
-        "then re-run this with ~/isaacsim/python.sh."
+        "then re-run this with the Isaac Sim interpreter ($ISAACSIM_PYTHON_EXE: python.sh in a standalone install)."
     )
 
 
@@ -365,7 +365,7 @@ def main():
             "Isaac's python.sh does not source your ROS workspace. Source it\n"
             'first, in the same shell:\n'
             '    source /opt/ros/jazzy/setup.bash && source install/setup.bash\n'
-            'then re-run this with ~/isaacsim/python.sh.'
+            'then re-run this with the Isaac Sim interpreter ($ISAACSIM_PYTHON_EXE: python.sh in a standalone install).'
         )
 
     xacro_file = os.path.join(desc_share, 'urdf', 'ranger_xarm.urdf.xacro')

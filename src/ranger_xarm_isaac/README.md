@@ -5,19 +5,21 @@ the gz simulation use, converted to USD, with the arm, the gripper, the 4WIS
 base and the sensors bridged to ROS 2 the way the real drivers expose them.
 Nothing in this package is needed to run the physical robot.
 
-Verified against Isaac Sim 5.1.0, installed out of tree at `~/isaacsim`.
+Verified against Isaac Sim 5.1.0. `$ISAACSIM_PYTHON_EXE` below is Isaac Sim's own
+interpreter: `python.sh` in a standalone install, the venv's `python` for a pip
+install (see the top-level README).
 
 ```bash
-# Source the workspace FIRST. Isaac's python.sh does not do it for you,
+# Source the workspace FIRST. Isaac's interpreter does not do it for you,
 # and the scripts need ament to find the description package.
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 P=$(ros2 pkg prefix ranger_xarm_isaac)
 
 # 1. convert the xacro to USD (Isaac's interpreter, not the system one)
-~/isaacsim/python.sh $P/lib/ranger_xarm_isaac/urdf_to_usd.py
+$ISAACSIM_PYTHON_EXE $P/lib/ranger_xarm_isaac/urdf_to_usd.py
 
 # 2. Isaac itself (owns physics and the clock)
-~/isaacsim/python.sh $P/lib/ranger_xarm_isaac/isaac_bringup.py
+$ISAACSIM_PYTHON_EXE $P/lib/ranger_xarm_isaac/isaac_bringup.py
 
 # 3. ros2_control against it
 ros2 launch ranger_xarm_isaac control.launch.py
@@ -80,8 +82,8 @@ It does **not** detect changed xacro *arguments*, since those leave no mtime.
 After changing e.g. `add_gripper`, pass `--force`.
 
 ```bash
-~/isaacsim/python.sh .../urdf_to_usd.py --force add_gripper:=false
-~/isaacsim/python.sh .../urdf_to_usd.py --fix-base      # weld to world
+$ISAACSIM_PYTHON_EXE .../urdf_to_usd.py --force add_gripper:=false
+$ISAACSIM_PYTHON_EXE .../urdf_to_usd.py --fix-base      # weld to world
 ```
 
 Other options: `--wheel-mu` (tyre friction, default 1.2),
@@ -239,9 +241,9 @@ Build a wheeled USD and launch with `drive_base:=true`:
 ```bash
 P=$(ros2 pkg prefix ranger_xarm_isaac)
 USD=$P/share/ranger_xarm_isaac/usd/ranger_xarm_wheeled.usd
-~/isaacsim/python.sh $P/lib/ranger_xarm_isaac/urdf_to_usd.py --force --output $USD \
+$ISAACSIM_PYTHON_EXE $P/lib/ranger_xarm_isaac/urdf_to_usd.py --force --output $USD \
     use_wheels:=true fix_base_to_world:=false wheels_command_interface:=velocity
-~/isaacsim/python.sh $P/lib/ranger_xarm_isaac/isaac_bringup.py --usd $USD
+$ISAACSIM_PYTHON_EXE $P/lib/ranger_xarm_isaac/isaac_bringup.py --usd $USD
 ros2 launch ranger_xarm_isaac control.launch.py drive_base:=true
 ```
 
@@ -322,7 +324,7 @@ robot; sample scenes do not keep the origin clear (in the hospital it is on
 the west wall, which the robot's rear then sits in; (2.5, 0) is open floor).
 
 ```bash
-~/isaacsim/python.sh $P/lib/ranger_xarm_isaac/isaac_bringup.py --usd $USD \
+$ISAACSIM_PYTHON_EXE $P/lib/ranger_xarm_isaac/isaac_bringup.py --usd $USD \
     --scene hospital --spawn 2.5,0,0
 ```
 
@@ -382,7 +384,7 @@ Export `ranger_xarm_bringup/config/fastdds_large_shm.xml` in Isaac's shell
 and in every consumer's, before starting them:
 
 ```bash
-export FASTRTPS_DEFAULT_PROFILES_FILE=~/ranger_xarm_ws/src/ranger_xarm_bringup/config/fastdds_large_shm.xml
+export FASTRTPS_DEFAULT_PROFILES_FILE=$(ros2 pkg prefix ranger_xarm_bringup)/share/ranger_xarm_bringup/config/fastdds_large_shm.xml
 ```
 
 The sensor-internal frames are deliberately **not** in the URDF. On
