@@ -98,7 +98,7 @@ ros2 launch ranger_xarm_moveit_config fake_execution.launch.py  # mock execution
 ## Isaac Sim
 
 `ranger_xarm_isaac` runs the same robot in NVIDIA Isaac Sim (verified on
-5.1.0, installed at `~/isaacsim`). The USD is generated from the xacro, never
+5.1.0). The USD is generated from the xacro, never
 committed; the arm, gripper and 4WIS base are driven through ros2_control's
 topic-based hardware interface (`topic_based_hardware_interfaces`, pulled by
 `ranger_xarm.repos`; build with `--packages-up-to` as below, since that
@@ -107,7 +107,16 @@ Jazzy's `control_msgs`), and the Ouster OS0 (with its IMU), RPLIDAR A1M8 and
 D435 publish on the same topics and frames as the real drivers. Details and
 pitfalls: `src/ranger_xarm_isaac/README.md`.
 
+Isaac Sim's scripts run under Isaac's own Python, not the system one. Point
+`ISAACSIM_PYTHON_EXE` at it once (the variable NVIDIA's own install docs use):
+for a standalone (workstation) install that is `python.sh` in the folder you
+unpacked it to; for a pip install (`pip install isaacsim`) it is the
+virtual environment's `python`.
+
 ```bash
+export ISAACSIM_PATH=/path/to/isaac-sim              # where you installed it
+export ISAACSIM_PYTHON_EXE=$ISAACSIM_PATH/python.sh  # pip install: the venv's python
+
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-up-to ranger_xarm_isaac
 source install/setup.bash
@@ -116,14 +125,14 @@ USD=$P/share/ranger_xarm_isaac/usd/ranger_xarm_wheeled.usd
 
 # The Ouster cloud needs the large shared-memory Fast DDS profile. Export it
 # in EVERY shell below (Isaac's included) or most scans are dropped.
-export FASTRTPS_DEFAULT_PROFILES_FILE=~/ranger_xarm_ws/src/ranger_xarm_bringup/config/fastdds_large_shm.xml
+export FASTRTPS_DEFAULT_PROFILES_FILE=$(ros2 pkg prefix ranger_xarm_bringup)/share/ranger_xarm_bringup/config/fastdds_large_shm.xml
 
 # 1. Generate the USD, with the wheeled base (Isaac's own interpreter)
-~/isaacsim/python.sh $P/lib/ranger_xarm_isaac/urdf_to_usd.py --force --output $USD \
+$ISAACSIM_PYTHON_EXE $P/lib/ranger_xarm_isaac/urdf_to_usd.py --force --output $USD \
     use_wheels:=true fix_base_to_world:=false wheels_command_interface:=velocity
 
 # 2. Start Isaac: robot on a flat ground plane, sensors, clock
-~/isaacsim/python.sh $P/lib/ranger_xarm_isaac/isaac_bringup.py --usd $USD
+$ISAACSIM_PYTHON_EXE $P/lib/ranger_xarm_isaac/isaac_bringup.py --usd $USD
 #    optionally in an environment: --scene hospital --spawn 2.5,0,0
 
 # 3. ros2_control, the 4WIS controller, wheel odometry

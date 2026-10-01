@@ -4,8 +4,8 @@
 # independent rather than resuming wherever the last one got stuck.
 # NB: no `set -u` here -- the ROS setup files read unset trace variables
 # (AMENT_TRACE_SETUP_FILES, COLCON_TRACE) and would abort the script.
-WS=${WS:-$HOME/ranger_xarm_ws}
-S=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+S=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+WS=${WS:-$(cd "$S/../../.." && pwd)}   # the workspace this script's source lives in; override with WS=
 WORLD=$1; N=${2:-5}
 LOG=${LOG_DIR:-$(mktemp -d)}   # launch logs; override with LOG_DIR=
 source $WS/install/setup.bash >/dev/null 2>&1

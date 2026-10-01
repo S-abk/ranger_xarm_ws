@@ -3,7 +3,7 @@
 
 Start Isaac first (it owns the physics and the clock):
 
-    ~/isaacsim/python.sh .../lib/ranger_xarm_isaac/isaac_bringup.py
+    $ISAACSIM_PYTHON_EXE .../lib/ranger_xarm_isaac/isaac_bringup.py
 
 then this:
 
