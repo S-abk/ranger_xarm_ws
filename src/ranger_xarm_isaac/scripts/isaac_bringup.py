@@ -51,6 +51,13 @@ except ModuleNotFoundError:
 ap = argparse.ArgumentParser()
 ap.add_argument('--usd', default=None, help='robot USD (default: the generated one)')
 ap.add_argument('--headless', action='store_true')
+ap.add_argument('--stream', action='store_true',
+                help='Headless, with the viewport streamed over WebRTC (Isaac Sim WebRTC Streaming '
+                     'Client; TCP 49100 and UDP 47998 must reach this machine). For a remote machine, '
+                     'e.g. over a VPN: run everything there, view the stream here.')
+ap.add_argument('--stream-address', default=os.environ.get('ISAACSIM_STREAM_ADDRESS'),
+                help='The address the streaming client connects to (this machine on the VPN); '
+                     'default $ISAACSIM_STREAM_ADDRESS, else local only.')
 ap.add_argument('--stage-path', default='/ranger_xarm')
 ap.add_argument('--commands-topic', default='isaac_joint_commands')
 ap.add_argument('--states-topic', default='isaac_joint_states')
@@ -121,8 +128,35 @@ from isaacsim import SimulationApp  # noqa: E402  (must precede any omni import)
 
 simulation_app = SimulationApp({
     'renderer': 'RaytracedLighting',
-    'headless': args.headless,
+    'headless': args.headless or args.stream,
+    # streamed: keep the UI (headless hides it by default), sized as in
+    # NVIDIA's standalone livestream sample
+    **({'hide_ui': False, 'width': 1280, 'height': 720,
+        'window_width': 1920, 'window_height': 1080} if args.stream else {}),
 })
+
+
+def enable_livestream(app, address):
+    """WebRTC livestream of the viewport. Isaac Sim 5.1 specifics, kept here:
+    the extension is omni.services.livestream.nvcf (version specific: a new
+    version's standalone_examples/api/isaacsim.simulation_app/livestream.py
+    names its own). The client connects to
+    /app/livestream/publicEndpointAddress on TCP 49100 (signalling), video
+    on UDP 47998. No authentication: keep it on a private network or a VPN."""
+    import carb.settings
+    from isaacsim.core.utils.extensions import enable_extension
+    st = carb.settings.get_settings()
+    if address:
+        st.set('/app/livestream/publicEndpointAddress', address)
+    st.set('/app/livestream/port', 49100)
+    st.set('/app/window/drawMouse', True)
+    enable_extension('omni.services.livestream.nvcf')
+    app.update()
+    print(f'[ranger_xarm_isaac] livestream on {address or "this machine"}: TCP 49100, UDP 47998', flush=True)
+
+
+if args.stream:
+    enable_livestream(simulation_app, args.stream_address)
 
 import omni.graph.core as og  # noqa: E402
 import usdrt.Sdf  # noqa: E402

@@ -37,6 +37,31 @@ The conversion produces one articulation root and 12 movable joints on the
 arm-only model (arm 1-6, `drive_joint`, and the 5 gripper followers), at
 roughly 34 MB.
 
+## Streaming (a remote machine)
+
+To run the simulation on a more capable machine and watch it from this one
+(e.g. over a VPN), run everything there, ROS included, and stream only
+Isaac's viewport:
+
+```bash
+# on the remote machine
+export ISAACSIM_STREAM_ADDRESS=<REMOTE_IP>   # its address on the VPN
+$ISAACSIM_PYTHON_EXE $P/lib/ranger_xarm_isaac/isaac_bringup.py --stream   # plus the usual arguments
+```
+
+`--stream` runs Isaac headless with its UI kept and the viewport served over
+WebRTC (`omni.services.livestream.nvcf` in Isaac Sim 5.1; the extension name
+is version specific). Connect with NVIDIA's *Isaac Sim WebRTC Streaming
+Client* (the 1.1.x AppImage for 5.1) to `ISAACSIM_STREAM_ADDRESS`. It needs
+TCP 49100 (signalling) and UDP 47998 (video) to reach the remote machine.
+There is no authentication, so keep it on the VPN.
+
+Keep the ROS graph on the remote machine (`ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`
+there): the raw sensor streams (the Ouster cloud, the RealSense colour and depth images)
+come to roughly 95 MB/s, far more than a VPN carries well. RViz is better
+run on the remote machine too, behind a remote desktop, than fed over the
+tunnel.
+
 ## Two traps that cost real time
 
 **Isaac's Python is not your Python.** Isaac 5.1 ships CPython 3.11 and
