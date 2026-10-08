@@ -264,7 +264,9 @@ than at planning time.
 
 - No unit or integration test suites: validation here is launching nodes and
   driving the robot, simulated or real. `colcon test` will report nothing
-  meaningful.
+  meaningful. `tools/smoke_test/` automates the simulated part: it brings the
+  robot up, drives it, moves the arm and checks the sensors, in about two
+  minutes.
 - Custom packages use `ament_cmake` with Python scripts installed via
   `install(PROGRAMS ...)`. **A new script must be added to `CMakeLists.txt` or
   it will not be installed to `lib/<pkg>/`** and the launch file will fail to
