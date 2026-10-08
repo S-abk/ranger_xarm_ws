@@ -14,7 +14,7 @@
 filter_frame: base_link
 
 input_topic: /ouster/points
-output_topic: /ouster/points_stage1
+output_topic: /ouster/points_moveit
 
 enable_service: /trusted_volume/enable
 # enabled, ready and markers are published under this namespace.
