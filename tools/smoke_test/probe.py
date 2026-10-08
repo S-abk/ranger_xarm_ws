@@ -12,7 +12,7 @@ reported beside it. --arm: the arm's trajectory controller reaches a pose.
 Prints one PASS/FAIL line per check; exits 0 only if every check passed.
 The thresholds are for "the bringup works", not for tracking accuracy: at
 least half the commanded travel, under 15 cm off-axis. A healthy run gets
-80-96 % (the shortfall is the steering and acceleration ramp).
+75-96 % (the shortfall is the steering and acceleration ramp).
 """
 import argparse
 import math

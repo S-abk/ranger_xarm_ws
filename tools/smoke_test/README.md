@@ -3,7 +3,7 @@
 Bring the robot up in simulation, check it does the basic things, shut it
 down. They answer "does the bringup work after this change", not "how well
 does it track": a check passes at half the commanded travel, and a healthy
-run gets 80-96 %.
+run gets 75-96 %.
 
 ```bash
 colcon build --packages-up-to ranger_xarm_gazebo
@@ -27,7 +27,7 @@ tools/smoke_test/isaac.sh
 This generates the wheeled USD into the log directory, so the one in
 `install/` is left alone. It then starts `isaac_bringup.py --headless` and
 `control.launch.py drive_base:=true`, and runs the `base` checks. Expect
-80-92 % here at a real-time factor of about 0.6.
+75-92 % here at a real-time factor of about 0.6.
 
 Exit status 0 means every check passed, 1 means a check failed, and 2 means
 the simulation never came up. One line per check is printed, and the launch
