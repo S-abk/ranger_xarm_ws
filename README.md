@@ -45,8 +45,9 @@ ros2 launch ranger_xarm_gazebo sim.launch.py
 
 You should get a gz window with the platform on a ground plane, a populated
 `/joint_states`, and `joint_state_broadcaster` plus `xarm_xarm6_traj_controller`
-active. `--packages-up-to` matters: it builds the simulation path only, and
-skips the packages that need physical-sensor drivers.
+active. `--packages-up-to` builds the simulation path only. A plain `colcon
+build` builds everything, including the hardware packages, which need their
+drivers only at run time.
 
 Useful arguments:
 
@@ -109,9 +110,7 @@ ros2 launch ranger_xarm_moveit_config fake_execution.launch.py  # mock execution
 5.1.0). The USD is generated from the xacro, never
 committed; the arm, gripper and 4WIS base are driven through ros2_control's
 topic-based hardware interface (`topic_based_hardware_interfaces`, pulled by
-`ranger_xarm.repos`; build with `--packages-up-to` as below, since that
-repository's `joint_command_topic_hardware_interface` does not build against
-Jazzy's `control_msgs`), and the Ouster OS0 (with its IMU), RPLIDAR A1M8 and
+`ranger_xarm.repos`), and the Ouster OS0 (with its IMU), RPLIDAR A1M8 and
 D435 publish on the same topics and frames as the real drivers. Details and
 pitfalls: `src/ranger_xarm_isaac/README.md`.
 

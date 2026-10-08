@@ -29,14 +29,18 @@ repositories:
   # ros-jazzy-joint-state-topic-hardware-interface, so `rosdep install` can
   # supply it instead and this entry can be dropped; it is pinned here so
   # the workspace builds without needing apt. Only its
-  # joint_state_topic_hardware_interface package is used. Its
-  # joint_command_topic_hardware_interface needs a control_msgs newer than
-  # Jazzy's release (control_msgs/msg/JointCommand) and does not build here:
-  # use --packages-up-to, or --packages-skip it in a full build.
+  # joint_state_topic_hardware_interface package is used.
+  #
+  # Pinned to the 1.1.0 release, the one Jazzy's apt package is built from,
+  # not to main: main adds joint_command_topic_hardware_interface, which
+  # needs a control_msgs newer than Jazzy's (control_msgs/msg/JointCommand),
+  # so a plain `colcon build` fails on it and aborts everything else.
+  # joint_state_topic_hardware_interface is identical in the two apart from
+  # its README.
   topic_based_hardware_interfaces:
     type: git
     url: https://github.com/ros-controls/topic_based_hardware_interfaces.git
-    version: 27ef8d17552a699147ecfd18dfd54a7db1a1785b
+    version: d30e9ab8c9990893a93b28dc24e6cdf73fa770c4  # 1.1.0
   # KISS-ICP lidar odometry, fused into the EKF by ranger_xarm_bringup's
   # ekf_odom_imu.launch.py (lidar_odometry:=true). Built from source because
   # the Jazzy binary is not available from this machine's apt sources and
