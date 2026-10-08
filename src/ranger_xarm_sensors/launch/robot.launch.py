@@ -4,7 +4,8 @@
 Everything optional is an `enable_*` argument rather than a separate launch
 file, so there is one file to read and one place a default can be wrong.
 
-    ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<arm ip>
+    ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<arm ip> \
+        ouster_sensor_hostname:=<ouster host>
     ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<arm ip> \
         enable_ouster:=false enable_d435:=false
 
@@ -189,10 +190,12 @@ def generate_launch_description():
         DeclareLaunchArgument('d435_initial_reset', default_value='false'),
 
         DeclareLaunchArgument('enable_ouster', default_value='true'),
-        DeclareLaunchArgument('ouster_sensor_hostname', default_value='<OUSTER_HOST>',
-                              description='Override for your sensor.'),
-        DeclareLaunchArgument('ouster_udp_dest', default_value='<HOST_IP>',
-                              description='Host interface the sensor sends to.'),
+        DeclareLaunchArgument('ouster_sensor_hostname',
+                              description='Hostname or IP of the Ouster '
+                                          '(required with enable_ouster).'),
+        DeclareLaunchArgument('ouster_udp_dest', default_value='',
+                              description='Host IP the sensor sends to; '
+                                          'empty lets ouster_ros detect it.'),
         DeclareLaunchArgument('ouster_lidar_mode', default_value='1024x10'),
         DeclareLaunchArgument('ouster_timestamp_mode', default_value='TIME_FROM_ROS_TIME'),
         DeclareLaunchArgument('enable_ouster_viz_cloud', default_value='true'),

@@ -15,7 +15,7 @@ The RealSense driver is launched with `camera_name=d435` and `base_frame_id=moun
 
 Point cloud and depth alignment are intentionally disabled for the initial D435 validation. Color/depth are set to 640x480x15. Point cloud remains off, and the operator RViz image displays are disabled by default to keep remote bandwidth controlled.
 
-## Phase 6C reduced Ouster preview cloud
+## Reduced Ouster preview cloud
 
 `ouster_points_viz` subscribes to the full local `/ouster/points` cloud and
 publishes `/ouster/points_viz` using deterministic point decimation plus a

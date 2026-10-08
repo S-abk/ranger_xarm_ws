@@ -1,4 +1,4 @@
-# ranger_xarm_bringup — Phase 5 onboard package
+# ranger_xarm_bringup
 
 Runs on the laptop mounted on the Ranger.
 
@@ -9,7 +9,7 @@ Runs on the laptop mounted on the Ranger.
 - `robot_state_publisher`
 - onboard `/cmd_vel_remote -> /cmd_vel` deadman relay
 
-The Phase 5 launch intentionally does **not** run RViz or keyboard teleop onboard.
+The onboard launch intentionally does **not** run RViz or keyboard teleop onboard.
 
 ```bash
 ros2 launch ranger_xarm_bringup base_bringup.launch.py can_device:=can0

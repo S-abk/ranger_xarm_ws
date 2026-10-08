@@ -88,6 +88,9 @@ class TrustedManipulationVolumeFilter(Node):
         self.enable_service_name = str(
             cfg.get('enable_service', '/trusted_volume/enable')
         )
+        self.status_namespace = str(
+            cfg.get('status_namespace', '/trusted_volume')
+        ).rstrip('/')
         self.clear_service_name = str(
             cfg.get('clear_octomap_service', '/clear_octomap')
         )
@@ -157,17 +160,17 @@ class TrustedManipulationVolumeFilter(Node):
 
         self.enabled_pub = self.create_publisher(
             Bool,
-            '/trusted_volume/enabled',
+            f'{self.status_namespace}/enabled',
             status_qos,
         )
         self.ready_pub = self.create_publisher(
             Bool,
-            '/trusted_volume/ready',
+            f'{self.status_namespace}/ready',
             status_qos,
         )
         self.marker_pub = self.create_publisher(
             MarkerArray,
-            '/trusted_volume/markers',
+            f'{self.status_namespace}/markers',
             status_qos,
         )
 
@@ -565,7 +568,7 @@ class TrustedManipulationVolumeFilter(Node):
                 f'Trusted-volume filtering '
                 f'{"ENABLED" if requested else "DISABLED"}; '
                 'OctoMap clear requested. Wait for '
-                '/trusted_volume/ready=true before planning.'
+                f'{self.status_namespace}/ready=true before planning.'
             )
 
         return True, (

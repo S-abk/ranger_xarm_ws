@@ -5,7 +5,8 @@ Run this ALONGSIDE the unified launch, with the Ranger driver's own TF turned
 off so exactly one node owns odom -> base_footprint:
 
     ros2 launch ranger_xarm_sensors robot.launch.py \\
-        robot_ip:=<XARM_IP> publish_odom_tf:=false
+        robot_ip:=<XARM_IP> ouster_sensor_hostname:=<OUSTER_HOST> \\
+        publish_odom_tf:=false
     ros2 launch ranger_xarm_bringup ekf_odom_imu.launch.py
 
 Two publishers of the same transform is a silent failure, not a loud one: TF

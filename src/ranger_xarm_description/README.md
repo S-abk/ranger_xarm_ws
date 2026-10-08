@@ -1,8 +1,8 @@
-# ranger_xarm_description — phase 2
+# ranger_xarm_description
 
 ROS 2 Jazzy description for the Ranger Mini V3 + xArm6 assembly, generated from the updated Fusion STEP.
 
-## Added in phase 2
+## Contents
 
 - Full Ranger Mini CAD visual mesh.
 - Full custom static structure visual mesh: pedestal, mounting plate, 8020 gantry, control/battery hardware, laptop stand, and sensor mounts.
