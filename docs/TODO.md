@@ -960,27 +960,3 @@ the rerun, so the underlying event is intermittent and the guard has
 never been observed catching a live one. If a run ever reports
 `non-finite joint data from ...`, that is the guard doing its job and
 the sample count is worth recording here.
-
-## Optional: purge the Ouster metadata from published history
-
-**Repo:** this one · **File:** `<sensor-ip>-metadata.json` (removed from the tree)
-
-The Ouster driver writes `<sensor-ip>-metadata.json` into whatever directory
-the launch was started from, so it landed at the workspace root and was
-committed. It carries the lidar's `prod_sn`, `prod_pn`, `image_rev` and
-`build_date`, and the filename encodes the sensor subnet.
-
-The working tree and all future commits are handled: the file is deleted and
-`*-metadata.json` is in `.gitignore`.
-
-**Not done:** the blob is still reachable in the commit that introduced it, so
-it remains visible on GitHub. Removing it means rewriting published history:
-
-```bash
-git filter-repo --path <sensor-ip>-metadata.json --invert-paths
-git push --force-with-lease origin main
-```
-
-That breaks every existing clone, so it is a deliberate call rather than a
-cleanup. Weigh it against what is actually exposed: an RFC1918 subnet and a
-lidar serial. Deliberately deferred in favour of keeping history linear.
