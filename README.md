@@ -108,7 +108,8 @@ With those in the workspace:
 
 ```bash
 colcon build
-ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<xarm controller ip>
+ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<xarm controller ip> \
+    ouster_sensor_hostname:=<ouster host>
 ```
 
 Every sensor is an `enable_*` argument, so a subset works without editing

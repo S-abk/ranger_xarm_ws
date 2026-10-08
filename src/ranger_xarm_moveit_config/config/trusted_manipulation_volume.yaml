@@ -17,6 +17,8 @@ input_topic: /ouster/points
 output_topic: /ouster/points_stage1
 
 enable_service: /trusted_volume/enable
+# enabled, ready and markers are published under this namespace.
+status_namespace: /trusted_volume
 enabled_at_startup: false
 
 # MoveIt's OctoMap updater is currently limited to ~2 Hz.

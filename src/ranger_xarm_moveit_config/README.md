@@ -1,4 +1,4 @@
-# ranger_xarm_moveit_config — phase 3
+# ranger_xarm_moveit_config
 
 Planning-only MoveIt 2 configuration for the validated Ranger Mini V3 + xArm6 robot description on ROS 2 Jazzy.
 
@@ -78,9 +78,9 @@ Once collision-aware planning is validated, phase 4 should replace `allow_trajec
 
 ---
 
-## Phase 4A: fake trajectory execution
+## Fake trajectory execution
 
-After Phase 3 planning has been validated, launch the ros2_control mock system:
+Once planning is validated, launch the ros2_control mock system:
 
 ```bash
 ros2 launch ranger_xarm_moveit_config fake_execution.launch.py
@@ -100,6 +100,6 @@ ros2 action list | grep follow_joint_trajectory
 Then use **Plan** followed by **Execute** in RViz. The arm should animate and
 `/joint_states` should change, while no physical robot is contacted.
 
-## Phase 4B real hardware
+## Real hardware
 
-Use `real_hardware_check.launch.py` first, then `real_execution.launch.py`. Both require `robot_ip:=...`. The real hardware plugin is `uf_robot_hardware/UFRobotSystemHardware`. See the bundle-level `PHASE4B_INSTALL.md` for the staged procedure.
+Use `real_hardware_check.launch.py` first, then `real_execution.launch.py`. Both require `robot_ip:=...`. The real hardware plugin is `uf_robot_hardware/UFRobotSystemHardware`. See `docs/SITE_SETUP.md` for the staged procedure.
