@@ -8,6 +8,14 @@ It gives you the robot and nothing else: description, MoveIt configuration,
 Gazebo simulation, sensor and base bringup. There is no application in here.
 Build yours as a package that depends on these.
 
+That is a rule for the history too. On 2026-10-08 every commit was
+rewritten to remove application- and site-specific content (application
+names and configuration, network addresses, a sensor's identifying
+metadata), so nothing here, past or present, assumes a particular
+deployment. If you cloned before then, re-clone, or run
+`git fetch origin && git reset --hard origin/<branch>` on each branch;
+your old commits do not share history with the new ones.
+
 The **same URDF drives simulation and hardware.** Simulation changes three
 xacro arguments, not the model, so a fix made in simulation is a fix on the
 robot and there is no second description to drift out of step.
