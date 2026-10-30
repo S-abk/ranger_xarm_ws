@@ -216,7 +216,10 @@ def launch_setup(context, *args, **kwargs):
                  # scrub (+2.5 deg of unwanted yaw down to ~0). The wheel
                  # acceleration limit also runs at its default (1.0 m/s^2),
                  # as in gz; in Isaac it halved flat-ground wheel odometry
-                 # error (0.17-0.25 % of path to 0.08-0.12 %).
+                 # error (0.17-0.25 % of path to 0.08-0.12 %). That figure
+                 # was measured while the controller took every 16.7 ms
+                 # clock step as 10 ms, so the limit, speed_ki and
+                 # brake_delay were effectively 0.6 m/s^2, 2.4 and 0.5 s.
                  parameters=[{'use_sim_time': True,
                               'command_mode': 'velocity'}]),
             # Dead reckoning from the wheel encoders, which is what the

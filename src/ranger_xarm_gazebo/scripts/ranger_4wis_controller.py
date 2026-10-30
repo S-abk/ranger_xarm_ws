@@ -263,8 +263,14 @@ class Ranger4WIS(Node):
         self.create_subscription(
             DynamicJointState, '/dynamic_joint_states', self._on_joints, 10)
         self.got_feedback = False
+        # Each tick integrates over the time that actually passed. Under
+        # /clock the 10 ms timer fires at most once per clock step, which is
+        # 16.7 ms from Isaac at 60 Hz, and a fixed 0.01 ran the wheel
+        # acceleration limit, the speed integral and the brake delay at 0.6x
+        # their configured rates there.
         self.dt = 0.01
-        self.create_timer(self.dt, self._tick)
+        self.last_tick = None
+        self.create_timer(0.01, self._tick)
         # Say so rather than quietly driving open loop.
         self.create_timer(5.0, self._check_feedback)
 
@@ -396,7 +402,11 @@ class Ranger4WIS(Node):
         return vx, 0.0, k * abs(vx) / r_turn
 
     def _tick(self):
-        age = (self.get_clock().now() - self.last_cmd_time).nanoseconds * 1e-9
+        now = self.get_clock().now()
+        if self.last_tick is not None:   # clamped: a stalled or rewound clock
+            self.dt = min(max((now - self.last_tick).nanoseconds * 1e-9, 0.0), 0.05)
+        self.last_tick = now
+        age = (now - self.last_cmd_time).nanoseconds * 1e-9
         # A dropped publisher must coast to a stop, not keep driving.
         t = Twist() if age > self.timeout else self.twist
         vx, vy, wz = t.linear.x, t.linear.y, t.angular.z
