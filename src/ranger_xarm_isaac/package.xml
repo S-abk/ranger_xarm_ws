@@ -34,6 +34,10 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
 
+  <!-- The large shared-memory Fast DDS profile every Isaac shell exports
+       (fastdds_large_shm.xml): without it most Ouster scans are dropped. -->
+  <exec_depend>ranger_xarm_bringup</exec_depend>
+
   <!-- moveit.launch.py: planning config is reused from the moveit package;
        only the controller map is local. -->
   <exec_depend>ranger_xarm_moveit_config</exec_depend>
