@@ -1,4 +1,5 @@
 # Source: Ranger_mini_Xarm6_custom_box Copy_cam.step
+# Camera entries updated from Ranger_mini_Xarm6_custom_box_d455.step (exported 2026-10-30).
 # ROS REP-103: +X forward (RPLIDAR end), +Y left, +Z up.
 # Fusion -> ROS: x_ros=-x_fusion, y_ros=z_fusion, z_ros=y_fusion.
 frames:
@@ -33,11 +34,27 @@ frames:
     method: updated_cad_occurrence_frame
     confidence: high
 
-  d435_mount_link:
+  gantry_d455_mount_link:
     parent: base_link
-    xyz: [-0.319950008, 0.0, 1.061025000]
+    xyz: [-0.319000008, 0.0, 1.063025000]
     rpy: [1.570796327, 0.0, 1.570796327]
-    method: updated_cad_occurrence_frame_no_10deg_tilt
+    method: cad_part_origin_D455_camera_1_2026-10-30_export
+    confidence: high
+    note: Replaces d435_mount_link (-0.319950008, 0, 1.061025). Same CAD part rotation.
+
+  wrist_d435_plate_link:
+    parent: xarm_link_eef
+    xyz: [0.0, 0.0, 0.0]
+    rpy: [3.141592654, 0.0, 1.570796327]   # + wrist_d435_roll on yaw
+    method: T_gripperRoot_gripperCAD(roll) * T_gripperCAD_plateCAD (CAD camera_:1)
+    confidence: roll PENDING-OPERATOR (0 or pi about the tool axis); everything else high
+    note: Plate CAD frame at the flange/gripper interface centre. Adds no spacer.
+
+  wrist_d435_mount_link:
+    parent: wrist_d435_plate_link
+    xyz: [0.0, 0.075, -0.02505]
+    rpy: [0.0, 3.141592654, 0.0]
+    method: T_plateCAD_D435partCAD (CAD D435f_Solid:2)
     confidence: high
 
   laptop_mount_surface:
