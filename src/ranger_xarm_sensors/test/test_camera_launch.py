@@ -49,6 +49,7 @@ class Walk:
         self.processes = []   # Node/ExecuteLocal actions, never executed
         self.facts = {}       # realsense node -> (namespace, name, params)
         self.skipped = []     # includes recorded but not descended into
+        self.locations = {}   # skipped include -> the launch file it points at
         self.disabled = []    # actions whose condition was false
 
     def realsense_nodes(self):
@@ -57,6 +58,12 @@ class Walk:
 
     def node_facts(self, node):
         return self.facts[node]
+
+
+def include_location(include, context):
+    """The launch file an include points at, with its substitutions performed."""
+    return perform_substitutions(
+        context, include.launch_description_source._LaunchDescriptionSource__location)
 
 
 def walk(entities, context, result=None, descend=DESCEND):
@@ -75,9 +82,10 @@ def walk(entities, context, result=None, descend=DESCEND):
         elif isinstance(entity, TimerAction):
             walk(entity.actions, context, result, descend)
         elif (isinstance(entity, IncludeLaunchDescription)
-              and not any(name in entity.launch_description_source.location
+              and not any(name in include_location(entity, context)
                           for name in descend)):
             result.skipped.append(entity)
+            result.locations[entity] = include_location(entity, context)
         else:
             sub = entity.visit(context)
             if sub:
@@ -114,6 +122,21 @@ OTHERS_OFF = {
     'enable_rplidar': 'false', 'enable_ouster': 'false',
     'enable_ouster_viz_cloud': 'false',
 }
+
+
+@pytest.fixture(autouse=True)
+def no_process_may_start(monkeypatch):
+    """Make "this walk starts nothing" a checked property, not a claim."""
+    import asyncio
+    import subprocess
+
+    def refuse(*args, **kwargs):
+        raise AssertionError(f'a process was started: {args[:1]}')
+
+    monkeypatch.setattr(subprocess, 'Popen', refuse)
+    monkeypatch.setattr(asyncio, 'create_subprocess_exec', refuse)
+    monkeypatch.setattr(asyncio, 'create_subprocess_shell', refuse)
+    monkeypatch.setattr(os, 'system', refuse)
 
 
 @pytest.fixture(scope='module')
@@ -254,11 +277,10 @@ def test_robot_with_both_cameras_off_needs_no_serial_and_starts_no_camera(robot)
             'enable_gantry_d455': 'false', 'enable_wrist_d435': 'false'}
     result, context = run(robot, args)
     assert result.realsense_nodes() == []
-    assert not any('d400_camera' in i.launch_description_source.location
-                   for i in result.skipped)
+    assert not any('d400_camera' in path for path in result.locations.values())
     # MoveIt (and its robot_state_publisher) is unconditional and still there.
     moveit = [i for i in result.skipped
-              if 'real_execution.launch.py' in i.launch_description_source.location]
+              if result.locations[i].endswith('real_execution.launch.py')]
     assert len(moveit) == 1 and moveit[0].condition is None
     # The unconditional static transform is the only process left.
     assert [(n.node_package, n.node_executable) for n in result.processes] == [
@@ -334,6 +356,39 @@ def test_robot_includes_this_packages_camera_launch(robot):
     resolved = context.perform_substitution(PathJoinSubstitution([
         FindPackageShare('ranger_xarm_sensors'), 'launch', 'd400_camera.launch.py']))
     assert os.path.realpath(resolved) == str((LAUNCH / 'd400_camera.launch.py').resolve())
+
+
+# ---- the path the ros2 launch CLI takes ------------------------------------
+
+def run_as_cli(args):
+    """Wrap robot.launch.py in an include with launch_arguments, as the CLI does.
+
+    The serial arguments are not declared by the launch file, so this checks
+    that undeclared command-line arguments really reach the launch context.
+    """
+    from launch import LaunchDescription
+    from launch.launch_description_sources import AnyLaunchDescriptionSource
+    wrapper = LaunchDescription([IncludeLaunchDescription(
+        AnyLaunchDescriptionSource(str(LAUNCH / 'robot.launch.py')),
+        launch_arguments=args.items())])
+    context = LaunchContext()
+    return walk(wrapper.entities, context, descend=DESCEND + ('robot.launch.py',)), context
+
+
+def test_cli_style_undeclared_serial_arguments_reach_the_cameras():
+    args = {**BASE_ARGS, **OTHERS_OFF,
+            'gantry_d455_serial_no': GOOD_GANTRY,
+            'wrist_d435_serial_no': GOOD_WRIST}
+    result, _ = run_as_cli(args)
+    serials = sorted(p[2]['serial_no'] for p in result.facts.values())
+    assert serials == sorted(['_' + GOOD_GANTRY, '_' + GOOD_WRIST])
+    assert len(result.facts) == 2
+
+
+def test_cli_style_missing_serial_raises():
+    args = {**BASE_ARGS, **OTHERS_OFF, 'wrist_d435_serial_no': GOOD_WRIST}
+    with pytest.raises(RuntimeError, match='gantry_d455_serial_no'):
+        run_as_cli(args)
 
 
 # ---- the two serial validators must agree ---------------------------------

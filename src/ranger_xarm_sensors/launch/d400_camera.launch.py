@@ -20,7 +20,8 @@ arguments below have no defaults on purpose:
 The serial is handed to rs_launch.py as '_' + digits. ROS 2 turns a parameter
 value made only of digits into an integer, and the driver's serial_no is a
 string; realsense2_camera strips one leading '_' to get round that
-(realsense_node_factory.cpp:337 in 4.58.4).
+(realsense_node_factory.cpp:337 in 4.58.4, per the installed library's debug
+symbols and disassembly; the 4.56.4 source has `substr(1)` at line 336).
 """
 import re
 

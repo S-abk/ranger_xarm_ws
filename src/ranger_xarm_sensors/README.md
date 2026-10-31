@@ -62,7 +62,9 @@ ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<ip> ouster_sensor_hos
 - Digits only. A leading `_` is accepted and ignored. The launch always hands the
   driver `_<digits>`: ROS 2 would turn a bare all-digit parameter into an integer and
   lose a leading zero, and realsense2_camera 4.58.4 removes one leading `_`
-  (`realsense_node_factory.cpp:337`).
+  (`realsense_node_factory.cpp:337`, from the debug-symbol line table and a
+  disassembly of the installed library, since that source is not installed; the 4.56.4
+  source has the explicit `substr(1)` at line 336).
 - The serial is the binding identity. `device_type` is a secondary filter: a serial
   that belongs to the wrong model finds no device rather than the wrong one.
 
