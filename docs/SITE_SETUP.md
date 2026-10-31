@@ -134,14 +134,24 @@ ros2 launch ranger_xarm_sensors robot.launch.py \
     ouster_sensor_hostname:=<OUSTER_HOST> \
     ouster_udp_dest:=<HOST_IP> \
     can_device:=<CAN_DEV> \
-    rplidar_serial_port:=<RPLIDAR_PORT>
+    rplidar_serial_port:=<RPLIDAR_PORT> \
+    gantry_d455_serial_no:=<GANTRY_D455_SERIAL> \
+    wrist_d435_serial_no:=<WRIST_D435_SERIAL>
 ```
 
-Every subsystem is an `enable_*` argument, so a partial robot needs no edits:
+The two camera serials are required while their camera is enabled and have no
+default; the launch refuses to start without them rather than bind whichever
+RealSense it finds first. Digits only (a leading `_` is ignored). Run
+`rs-enumerate-devices` on the robot with both cameras plugged in and use each
+`Serial Number` line, matched to its model (D455 gantry, D435 wrist).
+
+Every subsystem is an `enable_*` argument, so a partial robot needs no edits
+(a camera that is off needs no serial):
 
 ```bash
 ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<XARM_IP> \
-    enable_base:=false enable_rplidar:=false enable_ouster:=false
+    enable_base:=false enable_rplidar:=false enable_ouster:=false \
+    enable_gantry_d455:=false enable_wrist_d435:=false
 ```
 
 ## 5. Verification — what healthy looks like
@@ -155,7 +165,8 @@ Measured on a working system, so treat large deviations as real:
 | Arm pose is real | `ros2 topic echo /joint_states --once` | matches where the arm physically is — all zeros usually means it is *not* reading the arm |
 | Lidar | `ros2 topic hz /ouster/points` | 10 Hz standalone; 8–9 Hz under full load is contention, not loss |
 | Lidar cloud | `ros2 topic echo /ouster/points --once --field width` | 1024 (and height 128 for a 128-beam unit) |
-| Camera | `ros2 topic hz /camera/d435/depth/image_rect_raw` | ~15 Hz |
+| Gantry camera | `ros2 topic hz /camera/gantry_d455/depth/image_rect_raw` | ~15 Hz |
+| Wrist camera | `ros2 topic hz /camera/wrist_d435/depth/image_rect_raw` | ~15 Hz |
 | Sensor mounting | `ros2 run tf2_ros tf2_echo base_footprint os_sensor` | resolves; z ≈ 1.47 m |
 | Kernel not dropping | `grep -A1 ^Udp: /proc/net/snmp` | `RcvbufErrors` **not increasing** between samples |
 

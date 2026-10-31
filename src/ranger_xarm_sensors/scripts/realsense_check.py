@@ -1,33 +1,46 @@
 #!/usr/bin/env python3
-import math
+"""Stream and frame sanity check for one RealSense camera.
+
+    ros2 run ranger_xarm_sensors realsense_check.py --camera gantry_d455
+    ros2 run ranger_xarm_sensors realsense_check.py --camera wrist_d435
+
+Needs the camera running. Waits for one colour image, one depth image and both
+CameraInfo messages on /camera/<camera>/..., then checks that the optical
+frame ids are <camera>_color_optical_frame and <camera>_depth_optical_frame.
+Exit status: 0 healthy, 1 wrong frame ids, 2 timed out.
+"""
+import argparse
 import sys
 import time
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import CameraInfo, Image
 
 
-class D435Check(Node):
-    def __init__(self):
-        super().__init__('d435_check')
+class RealSenseCheck(Node):
+    def __init__(self, camera):
+        super().__init__(f'{camera}_check')
+        self.camera = camera
         self.color = None
         self.depth = None
         self.color_info = None
         self.depth_info = None
 
+        base = f'/camera/{camera}'
         self.create_subscription(
-            Image, '/camera/d435/color/image_raw', self._color_cb,
+            Image, f'{base}/color/image_raw', self._color_cb,
             qos_profile_sensor_data)
         self.create_subscription(
-            Image, '/camera/d435/depth/image_rect_raw', self._depth_cb,
+            Image, f'{base}/depth/image_rect_raw', self._depth_cb,
             qos_profile_sensor_data)
         self.create_subscription(
-            CameraInfo, '/camera/d435/color/camera_info', self._color_info_cb,
+            CameraInfo, f'{base}/color/camera_info', self._color_info_cb,
             qos_profile_sensor_data)
         self.create_subscription(
-            CameraInfo, '/camera/d435/depth/camera_info', self._depth_info_cb,
+            CameraInfo, f'{base}/depth/camera_info', self._depth_info_cb,
             qos_profile_sensor_data)
 
     def _color_cb(self, msg):
@@ -55,11 +68,20 @@ class D435Check(Node):
 
 
 def main():
-    rclpy.init()
-    node = D435Check()
-    node.get_logger().info('Waiting for D435 color/depth images and CameraInfo ...')
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    parser.add_argument(
+        '--camera', required=True,
+        help='camera_name the driver was launched with, e.g. gantry_d455')
+    parser.add_argument('--timeout', type=float, default=12.0)
+    args = parser.parse_args(remove_ros_args(sys.argv)[1:])
 
-    deadline = time.monotonic() + 12.0
+    rclpy.init()
+    camera = args.camera
+    node = RealSenseCheck(camera)
+    node.get_logger().info(
+        f'Waiting for {camera} color/depth images and CameraInfo ...')
+
+    deadline = time.monotonic() + args.timeout
     while rclpy.ok() and time.monotonic() < deadline:
         rclpy.spin_once(node, timeout_sec=0.2)
         if all((node.color, node.depth, node.color_info, node.depth_info)):
@@ -90,8 +112,8 @@ def main():
         f'depth CameraInfo frame={node.depth_info.header.frame_id} '
         f'fx={node.depth_info.k[0]:.2f} fy={node.depth_info.k[4]:.2f}')
 
-    expected_color = 'd435_color_optical_frame'
-    expected_depth = 'd435_depth_optical_frame'
+    expected_color = f'{camera}_color_optical_frame'
+    expected_depth = f'{camera}_depth_optical_frame'
     ok = True
     if node.color.header.frame_id != expected_color:
         node.get_logger().warn(
@@ -103,7 +125,7 @@ def main():
         ok = False
 
     if ok:
-        node.get_logger().info('D435 stream/frame sanity check PASSED')
+        node.get_logger().info(f'{camera} stream/frame sanity check PASSED')
 
     node.destroy_node()
     rclpy.shutdown()
