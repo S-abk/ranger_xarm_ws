@@ -129,16 +129,23 @@ def launch_setup(context, *args, **kwargs):
         parameters=[{'use_sim_time': True}],
     )
 
-    # d435_link -> the optical frames, as the RealSense driver publishes them
-    # (+Z forward, +X right, +Y down). Colour and depth share one render
-    # product in Isaac, so they share one pose.
-    d435_tfs = [Node(
+    # <camera>_link -> the optical frames, as the RealSense driver publishes
+    # them (+Z forward, +X right, +Y down). Colour and depth share one render
+    # product in Isaac, so they share one pose. One pair per camera, and the
+    # only publishers of those frames: isaac_sensors.py keeps the camera prims
+    # out of its transform tree. The wrist D435 sits on the plate between the
+    # xArm flange and the gripper, so it exists only with add_gripper.
+    camera_names = ['gantry_d455']
+    if add_gripper.lower() in ('true', '1', 'yes'):
+        camera_names.append('wrist_d435')
+    camera_tfs = [Node(
         package='tf2_ros', executable='static_transform_publisher',
-        name=f'{frame}_static_tf', output='log',
+        name=f'{cam}_{kind}_optical_static_tf', output='log',
         arguments=['--roll', '-1.5707963267948966', '--yaw', '-1.5707963267948966',
-                   '--frame-id', 'd435_link', '--child-frame-id', frame],
+                   '--frame-id', f'{cam}_link',
+                   '--child-frame-id', f'{cam}_{kind}_optical_frame'],
         parameters=[{'use_sim_time': True}],
-    ) for frame in ('d435_color_optical_frame', 'd435_depth_optical_frame')]
+    ) for cam in camera_names for kind in ('color', 'depth')]
 
     # Isaac publishes /clock through the bridge, so everything here runs
     # on sim time and stays aligned with the physics step.
@@ -231,7 +238,7 @@ def launch_setup(context, *args, **kwargs):
         ]
 
     return [
-        rsp, ouster_tf, *d435_tfs, effort_filter, command_merger, contact_relay,
+        rsp, ouster_tf, *camera_tfs, effort_filter, command_merger, contact_relay,
         control_node, jsb,
         # One spawner at a time. Firing them together on the same event had
         # four of them calling load_controller and configure on a

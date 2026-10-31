@@ -13,7 +13,7 @@ tools/smoke_test/gazebo.sh          # or: gazebo.sh arm | gazebo.sh base
 | Scenario | Launch | Checks |
 | --- | --- | --- |
 | `arm` | `sim.launch.py` as shipped (base welded to the world) | controllers active, `/joint_states`, `/clock`, arm reaches a pose |
-| `base` | `drive_base:=true sensors:=true` | the above, plus Ouster cloud and IMU, `/scan`, D435 image, and forward / crab / spin-in-place each moving the base along the commanded axis (by `/ground_truth/odom`, with `/odom` beside it) |
+| `base` | `drive_base:=true sensors:=true` | the above, plus Ouster cloud and IMU, `/scan`, the colour image of each camera (gantry D455 and wrist D435, reported separately, both required), and forward / crab / spin-in-place each moving the base along the commanded axis (by `/ground_truth/odom`, with `/odom` beside it) |
 
 In Isaac Sim (about a minute and a half, plus Isaac's first-run shader
 compile):
@@ -38,6 +38,9 @@ Each run uses its own ROS domain (`SMOKE_DOMAIN_ID`, default 42), keeps
 discovery on this machine and uses its own gz partition, so it can run
 beside another simulation or a robot session without either seeing the
 other.
+
+Both cameras must publish for `--sensors` to pass; `--no-wrist-camera` drops
+the wrist D435 check for a model without the gripper plate (`add_gripper:=false`).
 
 `probe.py` is simulator-agnostic: point it at anything already running
 (`probe.py --drive --sensors --arm`) and it runs the same checks.

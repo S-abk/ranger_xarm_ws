@@ -267,6 +267,11 @@ def launch_setup(context, *args, **kwargs):
     # rgbd_camera derives image/depth_image/camera_info from one <topic>
     # and the RealSense driver's layout is not derivable from it.
     sensor_nodes = []
+    # The wrist D435 is mounted on the xArm flange plate, which only
+    # exists with the gripper; the URDF has no wrist camera without it.
+    cameras = ['gantry_d455']
+    if add_gripper.lower() in ('true', '1', 'yes'):
+        cameras.append('wrist_d435')
     if sensors:
         sensor_nodes.append(Node(
             package='ros_gz_bridge', executable='parameter_bridge',
@@ -278,21 +283,27 @@ def launch_setup(context, *args, **kwargs):
                 # its unused /scan/points cloud is left unbridged.
                 '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
                 '/ouster/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
-                '/camera/d435/image@sensor_msgs/msg/Image[gz.msgs.Image',
-                '/camera/d435/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
-                '/camera/d435/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            ] + [
+                f'/camera/{cam}/{topic}@sensor_msgs/msg/{msg}[gz.msgs.{msg}'
+                for cam in cameras
+                for topic, msg in (('image', 'Image'), ('depth_image', 'Image'),
+                                   ('camera_info', 'CameraInfo'))
             ],
             remappings=[
-                ('/camera/d435/image', '/camera/d435/color/image_raw'),
-                ('/camera/d435/depth_image', '/camera/d435/depth/image_rect_raw'),
-                ('/camera/d435/camera_info', '/camera/d435/color/camera_info'),
+                (f'/camera/{cam}/{gz_name}', f'/camera/{cam}/{ros_name}')
+                for cam in cameras
+                for gz_name, ros_name in (
+                    ('image', 'color/image_raw'),
+                    ('depth_image', 'depth/image_rect_raw'),
+                    ('camera_info', 'color/camera_info'))
             ],
         ))
 
         # The frames the sensors publish INTO. These are not URDF links
         # on purpose: on hardware the drivers own them, publishing them
         # from the sensor's own metadata and calibration, which is why
-        # d435_mount_link is in the description and nothing below it is.
+        # the *_mount_link frames are in the description and nothing
+        # below them is.
         # In simulation nobody else will, so the sim does it, exactly as
         # the driver would. ranger_xarm_isaac does the same thing through
         # a ROS2PublishTransformTree node.
@@ -314,13 +325,17 @@ def launch_setup(context, *args, **kwargs):
                       ('0', '0', '0.03618'), ('0', '0', '3.14159265')),
             static_tf('os_imu_tf', 'os_sensor', 'os_imu',
                       ('0', '0', '0'), ('0', '0', '0')),
-            # ROS optical frames are +Z forward, +Y down, where the link
-            # is +X forward, +Z up. This is that rotation, and it is the
-            # same one every camera driver publishes.
-            static_tf('d435_color_tf', 'd435_link', 'd435_color_optical_frame',
-                      ('0', '0', '0'), ('-1.5707963', '0', '-1.5707963')),
-            static_tf('d435_depth_tf', 'd435_link', 'd435_depth_optical_frame',
-                      ('0', '0', '0'), ('-1.5707963', '0', '-1.5707963')),
+        ]
+        # ROS optical frames are +Z forward, +Y down, where the link is
+        # +X forward, +Z up. This is that rotation, and it is the same one
+        # every camera driver publishes. One pair per camera, and these are
+        # the only publishers of those frames in this sim (the URDF has no
+        # optical links, and gz only names the frame in its message header).
+        sensor_nodes += [
+            static_tf(f'{cam}_{kind}_tf', f'{cam}_link',
+                      f'{cam}_{kind}_optical_frame',
+                      ('0', '0', '0'), ('-1.5707963', '0', '-1.5707963'))
+            for cam in cameras for kind in ('color', 'depth')
         ]
 
     rviz = Node(

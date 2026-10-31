@@ -182,7 +182,9 @@
   </xacro:if>
 
   <xacro:if value="$(arg gz_sensors)">
-    <xacro:ranger_gazebo_sensors/>
+    <!-- The wrist links exist only with the xArm and its gripper. -->
+    <xacro:ranger_gazebo_sensors
+      wrist_d435="${'$(arg use_xarm)'.lower() == 'true' and '$(arg add_gripper)'.lower() == 'true'}"/>
   </xacro:if>
 
 </robot>

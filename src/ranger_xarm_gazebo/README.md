@@ -72,15 +72,26 @@ simulators are interchangeable too.
 Ouster OS0     /ouster/points                       os_lidar
                /ouster/imu                          os_imu
 RPLIDAR A1M8   /scan                                laser_frame
-RealSense      /camera/d435/color/image_raw         d435_color_optical_frame
-               /camera/d435/depth/image_rect_raw    d435_depth_optical_frame
-               /camera/d435/color/camera_info
+Gantry D455    /camera/gantry_d455/color/image_raw       gantry_d455_color_optical_frame
+               /camera/gantry_d455/depth/image_rect_raw  gantry_d455_depth_optical_frame
+               /camera/gantry_d455/color/camera_info
+Wrist D435     /camera/wrist_d435/color/image_raw        wrist_d435_color_optical_frame
+               /camera/wrist_d435/depth/image_rect_raw   wrist_d435_depth_optical_frame
+               /camera/wrist_d435/color/camera_info
 ```
+
+The gantry D455 (`gantry_d455_link`, 90 deg HFOV, near 0.18 m) is fixed to
+`base_link`. The wrist D435 (`wrist_d435_link`, 69 deg HFOV, near 0.105 m) is
+fixed to the xArm flange link and moves with joint 6; it exists only with
+`add_gripper:=true`, because it sits on the plate between the flange and the
+gripper. Both are 848x480 and 30 Hz, far clip 10 m. gz derives the vertical
+FOV from HFOV and the aspect ratio, so the D455 renders V58.6 rather than the
+datasheet V65 (which belongs to its 16:10 mode).
 
 The sensor-internal frames are deliberately **not** links in the URDF. On
 hardware the drivers own them, publishing from the sensor's own metadata and
-calibration, which is why `d435_mount_link` is in the description and
-nothing below it is. Putting them in the URDF would collide with the
+calibration, which is why the `*_mount_link` frames are in the description and
+nothing below them is. Putting them in the URDF would collide with the
 driver's transforms the moment a real sensor is plugged in, so gz names them
 with `<gz_frame_id>` and the launch publishes the transforms instead.
 
@@ -232,7 +243,7 @@ together, a controller that failed to spawn looks exactly like a planning
 failure.
 
 It does not give you real perception. `sensors:=true` simulates the Ouster,
-the D435 and the RPLIDAR (see below), but the returns are ideal geometry.
+the D455, the D435 and the RPLIDAR (see below), but the returns are ideal geometry.
 They do not have the return statistics of the physical sensors — grazing
 incidence dropouts, retroreflector blooming, dust, sunlight on the depth
 pair. A perception stack that works here has been shown to work against

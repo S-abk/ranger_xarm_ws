@@ -397,10 +397,23 @@ Topics and frames match what the REAL drivers publish, because
 Ouster OS0     /ouster/points                       os_lidar
                /ouster/imu                          os_imu
 RPLIDAR A1M8   /scan                                laser_frame
-RealSense      /camera/d435/color/image_raw         d435_color_optical_frame
-               /camera/d435/depth/image_rect_raw    d435_depth_optical_frame
-               /camera/d435/color/camera_info
+Gantry D455    /camera/gantry_d455/color/image_raw       gantry_d455_color_optical_frame
+               /camera/gantry_d455/depth/image_rect_raw  gantry_d455_depth_optical_frame
+               /camera/gantry_d455/color/camera_info
+Wrist D435     /camera/wrist_d435/color/image_raw        wrist_d435_color_optical_frame
+               /camera/wrist_d435/depth/image_rect_raw   wrist_d435_depth_optical_frame
+               /camera/wrist_d435/color/camera_info
 ```
+
+Each camera is a USD camera prim created as a child of its URDF link's prim
+(`gantry_d455_link`, `wrist_d435_link`; the importer keeps them because
+`merge_fixed_joints` is off), looking along the link's +X, with its own render
+product and 848x480 publishers. The wrist D435 link is a fixed child of the
+xArm flange link, so its camera rides the arm with joint 6; it exists only
+with `add_gripper:=true` (otherwise the bring-up logs that the link is missing
+and skips it). Intrinsics per model, same 20.955 mm horizontal aperture:
+D435 69 deg HFOV (focal 15.245 mm), D455 90 deg HFOV (focal
+`(aperture/2)/tan(45 deg)` = 10.4775 mm).
 
 **Export the large-SHM Fast DDS profile.** The 128 x 1024 Ouster cloud is
 2 - 3 MB, more than Fast DDS's default shared-memory segment, so it falls
@@ -414,12 +427,17 @@ export FASTRTPS_DEFAULT_PROFILES_FILE=$(ros2 pkg prefix ranger_xarm_bringup)/sha
 
 The sensor-internal frames are deliberately **not** in the URDF. On
 hardware they belong to the drivers, which publish them from the sensor's
-own metadata and calibration, and that split is why `d435_mount_link`
-exists in the description and nothing below it does. In Isaac,
+own metadata and calibration, and that split is why the `*_mount_link`
+frames exist in the description and nothing below them does. In Isaac,
 `control.launch.py` publishes them statically the way the drivers do:
 `os_sensor -> os_lidar` with the Ouster's OS-series offset (36.18 mm up,
-yawed 180 deg), and `d435_link` -> the two optical frames. Isaac's own
-transform tree names frames after prims, so it cannot supply them.
+yawed 180 deg), and `<camera>_link` -> the two optical frames of each
+camera (`gantry_d455`, and `wrist_d435` when the gripper is present). These
+static transforms are the only publishers of the optical frames: Isaac's own
+transform tree names frames after prims, so it cannot supply them, and the
+camera prims are deliberately left out of that tree (a camera on the moving
+wrist link would otherwise add a second publisher for a frame
+`robot_state_publisher` owns).
 
 The IMU reads `(0, 0, +9.810)` at rest. `readGravity` is on because a
 real accelerometer at rest reports gravity; with it off the published
@@ -453,11 +471,14 @@ blocks part of its rear view; returns at ~0.4 m behind it are the robot.
 
 ### Known simplifications
 
-- One render product feeds both colour and depth, so they are
-  pixel-identical and share the colour FOV (69 deg, verified 69.0 x 42.5
-  against the D435 spec). On hardware depth is wider at 87 deg and sits
-  a baseline away with its own intrinsics. Splitting them is two render
-  products and twice the GPU cost.
+- One render product per camera feeds both colour and depth, so they are
+  pixel-identical and share the colour FOV (D435 69 deg, previously
+  verified 69.0 x 42.5 against the spec; D455 90 deg, which at 848x480 is
+  58.6 vertical against the datasheet 65 of its 16:10 mode). On hardware
+  depth is wider on the D435 (87 deg) and sits a baseline away with its
+  own intrinsics. Splitting them is two more render products per camera
+  and twice the GPU cost. The D455 intrinsics are computed, not yet
+  verified in Isaac.
 - The Ouster mount offsets are the OS-series family defaults (lidar
   origin 36.18 mm above the sensor origin, yawed 180). A specific unit's
   values come from its own metadata JSON, which this workspace

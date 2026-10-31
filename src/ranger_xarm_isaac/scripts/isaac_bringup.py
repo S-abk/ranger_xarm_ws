@@ -62,7 +62,7 @@ ap.add_argument('--stage-path', default='/ranger_xarm')
 ap.add_argument('--commands-topic', default='isaac_joint_commands')
 ap.add_argument('--states-topic', default='isaac_joint_states')
 ap.add_argument('--no-sensors', action='store_true',
-                help='skip the lidars, IMU and camera. They each cost a render '
+                help='skip the lidars, IMU and cameras. They each cost a render '
                      'product every frame, so turn them off when only the '
                      'control loop matters.')
 ap.add_argument('--physics-dt', type=float, default=None,
@@ -339,10 +339,21 @@ if not args.no_sensors:
         current_stage, 'laser_frame', 'rplidar', sensors.RPLIDAR_BASE_CONFIG,
         profile_json=os.path.join(isaac_share, 'config', 'lidar',
                                   'RPLIDAR_A1M8.json'))
-    d435 = sensors.add_camera(current_stage, 'd435_link', 'd435_camera')
+    # Both cameras are children of their link prims, looking along the
+    # link's +X. The wrist link is a fixed child of the xArm flange link,
+    # so its camera rides the arm; it only exists with the gripper plate
+    # (add_camera skips a missing link with a message).
+    cameras = [
+        ('gantry_d455', sensors.add_camera(
+            current_stage, 'gantry_d455_link', 'gantry_d455_camera',
+            model='d455')),
+        ('wrist_d435', sensors.add_camera(
+            current_stage, 'wrist_d435_link', 'wrist_d435_camera',
+            model='d435')),
+    ]
     simulation_app.update()
     sensors.build_sensor_graph(current_stage, ouster, ouster_imu, rplidar,
-                               d435, articulation_path)
+                               cameras, articulation_path)
     simulation_app.update()
 
 # Drive damping (see --wheel-damping, --steer-damping). Before physics
