@@ -1,7 +1,7 @@
 # ranger_xarm_ws
 
 ROS 2 Jazzy workspace for a **Ranger Mini V3 omnidirectional base + UFACTORY
-xArm 6** mobile manipulator, with an Ouster OS0 lidar, an Intel RealSense D435
+xArm 6** mobile manipulator, with an Ouster OS0 lidar, two Intel RealSense cameras (a D455 on the gantry, a D435 on the wrist)
 and an RPLIDAR A1 on a sensor gantry.
 
 It gives you the robot and nothing else: description, MoveIt configuration,
@@ -179,7 +179,7 @@ because which ones you need depends on which sensors you have:
 
 - `ranger_base`, `ranger_msgs` — AgileX Ranger CAN driver
 - `ouster_ros` — Ouster OS0
-- `realsense2_camera` — Intel RealSense D435
+- `realsense2_camera` — Intel RealSense D455 and D435
 - `sllidar_ros2` — RPLIDAR A1
 
 With those in the workspace:
@@ -187,15 +187,21 @@ With those in the workspace:
 ```bash
 colcon build
 ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<xarm controller ip> \
-    ouster_sensor_hostname:=<ouster host>
+    ouster_sensor_hostname:=<ouster host> \
+    gantry_d455_serial_no:=<digits> wrist_d435_serial_no:=<digits>
 ```
 
+Each RealSense needs its own serial (digits, from `rs-enumerate-devices`) and has
+no default, so the launch can never bind whichever camera enumerates first.
+Details: `src/ranger_xarm_sensors/README.md`.
+
 Every sensor is an `enable_*` argument, so a subset works without editing
-anything:
+anything. A camera that is off needs no serial:
 
 ```bash
 ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<ip> \
-    enable_ouster:=false enable_rplidar:=false enable_base:=false
+    enable_ouster:=false enable_rplidar:=false enable_base:=false \
+    enable_gantry_d455:=false enable_wrist_d435:=false
 ```
 
 Staged bringup, which is how to debug a bad start rather than an alternative

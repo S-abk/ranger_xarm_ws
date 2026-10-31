@@ -5,18 +5,32 @@ Everything optional is an `enable_*` argument rather than a separate launch
 file, so there is one file to read and one place a default can be wrong.
 
     ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<arm ip> \
-        ouster_sensor_hostname:=<ouster host>
+        ouster_sensor_hostname:=<ouster host> \
+        gantry_d455_serial_no:=<digits> wrist_d435_serial_no:=<digits>
     ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<arm ip> \
-        enable_ouster:=false enable_d435:=false
+        enable_ouster:=false enable_gantry_d455:=false enable_wrist_d435:=false
+
+Camera serials. Each RealSense has its own required serial argument and NO
+default, so the launch can never bind "whichever camera enumerates first":
+
+    gantry_d455_serial_no   required while enable_gantry_d455 is true
+    wrist_d435_serial_no    required while enable_wrist_d435 is true
+
+Digits only; a leading '_' is accepted and ignored. A missing, empty or
+malformed serial, or the same serial for both cameras, stops the launch before
+anything else starts. With a camera disabled its serial is not needed. Read the
+serials with rs-enumerate-devices.
 
 This launch talks to hardware. It does not execute any arm motion on its own:
 MoveIt comes up able to plan, and executing a plan is a separate, explicit act.
 Anything that moves the arm autonomously belongs in a downstream package that
 includes this one, not in here -- see the workspace README.
 """
+import re
+
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, GroupAction,
-                            IncludeLaunchDescription)
+                            IncludeLaunchDescription, OpaqueFunction)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import (AnyLaunchDescriptionSource,
                                                PythonLaunchDescriptionSource)
@@ -24,6 +38,98 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
+
+# (camera_name, device_type). device_type is a case-insensitive regex on the
+# device name; 'd435(?!i)' keeps a D435i from answering for the wrist D435.
+_CAMERAS = (
+    ('gantry_d455', 'd455'),
+    ('wrist_d435', 'd435(?!i)'),
+)
+_SERIAL = re.compile(r'[0-9]+', re.ASCII)
+
+
+def _camera_serial(context, camera):
+    """The validated digit serial for `camera`, or RuntimeError naming its argument.
+
+    Same rule as normalize_serial in d400_camera.launch.py (digits only, one
+    optional leading '_'), repeated here so a bad serial is caught while
+    nothing has started yet; test_camera_launch.py checks the two agree.
+    """
+    arg = f'{camera}_serial_no'
+    raw = context.launch_configurations.get(arg)
+    if raw is None or not raw.strip():
+        raise RuntimeError(
+            f"{camera} is enabled but required launch argument '{arg}' was "
+            f"not provided. Pass {arg}:=<digits> (rs-enumerate-devices lists "
+            f"the serials) or disable the camera with enable_{camera}:=false. "
+            "There is deliberately no default: the launch never binds the "
+            "first camera it finds.")
+    digits = raw.strip()
+    if digits.startswith('_'):
+        digits = digits[1:]
+    if not _SERIAL.fullmatch(digits):
+        raise RuntimeError(
+            f"{arg} must be the camera serial number (digits only, a leading "
+            f"'_' is allowed), got {raw!r}.")
+    return digits
+
+
+def realsense_cameras(context):
+    """One scoped d400_camera include per enabled camera.
+
+    Why an OpaqueFunction and not DeclareLaunchArgument + LaunchConfiguration:
+    a DeclareLaunchArgument without a default makes the WHOLE launch fail when
+    the argument is missing, even with that camera disabled, which would make
+    enable_*:=false unusable. So the serial arguments are not declared; they
+    are read from the launch configuration here, and only for a camera that is
+    enabled. (They are therefore also absent from `ros2 launch --show-args`;
+    the module docstring and the README list them.)
+    """
+    enabled = [(name, device_type) for name, device_type in _CAMERAS
+               if IfCondition(LaunchConfiguration(f'enable_{name}')).evaluate(context)]
+    serials = {name: _camera_serial(context, name) for name, _ in enabled}
+    if len(set(serials.values())) < len(serials):
+        raise RuntimeError(
+            'gantry_d455_serial_no and wrist_d435_serial_no are the same '
+            f'serial ({next(iter(serials.values()))}); two cameras cannot '
+            'share one device.')
+
+    def perform(name):
+        return context.perform_substitution(LaunchConfiguration(name))
+
+    groups = []
+    for name, device_type in enabled:
+        groups.append(GroupAction(
+            actions=[IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(PathJoinSubstitution([
+                    FindPackageShare('ranger_xarm_sensors'),
+                    'launch', 'd400_camera.launch.py'])),
+                # Plain strings, already resolved against this context. They
+                # have to be launch_arguments of the include (launch checks
+                # that an include is given its required arguments), and
+                # forwarding=False below clears every configuration before the
+                # include is evaluated, so a LaunchConfiguration here would
+                # no longer exist by then.
+                launch_arguments={
+                    'camera_name': name,
+                    'device_type': device_type,
+                    'serial_no': serials[name],
+                    'color_profile': perform('color_profile'),
+                    'depth_profile': perform('depth_profile'),
+                    'initial_reset': perform(f'{name}_initial_reset'),
+                }.items(),
+            )],
+            # Scoped and NOT forwarding, which matters more than it looks. An
+            # include inherits the parent's launch configurations, and the
+            # RealSense launch turns every configuration it can see into a
+            # node parameter -- so every argument declared here (can_device,
+            # enable_base, max_linear_x, ...) arrived at the camera as an
+            # unsupported parameter and produced ~20 lines of warning each
+            # start. That noise is not cosmetic: it buried a driver crash
+            # during bring-up and cost real time to see past.
+            scoped=True, forwarding=False,
+        ))
+    return groups
 
 
 def generate_launch_description():
@@ -106,34 +212,6 @@ def generate_launch_description():
         }.items(),
     )
 
-    # Scoped and NOT forwarding, which matters more than it looks. An include
-    # inherits the parent's launch configurations, and the RealSense launch
-    # turns every configuration it can see into a node parameter -- so every
-    # argument declared here (can_device, enable_base, max_linear_x, ...)
-    # arrived at the camera as an unsupported parameter and produced ~20 lines
-    # of warning each start. That noise is not cosmetic: it buried a driver
-    # crash during bring-up and cost real time to see past.
-    d435 = GroupAction(
-        actions=[IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(PathJoinSubstitution([
-                FindPackageShare('ranger_xarm_sensors'),
-                'launch', 'd435.launch.py'])),
-        )],
-        scoped=True, forwarding=False,
-        # Passed HERE, not as launch_arguments. forwarding=False inserts a
-        # ResetLaunchConfigurations, which resolves this dict against the
-        # parent context and only then clears -- so these three survive and
-        # everything else is dropped. As launch_arguments they would be
-        # evaluated after the clear, and fail with "launch configuration
-        # 'color_profile' does not exist".
-        launch_configurations={
-            'color_profile': lc('color_profile'),
-            'depth_profile': lc('depth_profile'),
-            'initial_reset': lc('d435_initial_reset'),
-        },
-        condition=IfCondition(lc('enable_d435')),
-    )
-
     # Ouster's own launch, so the driver keeps ownership of
     # os_sensor -> os_lidar/os_imu and its factory calibration. The URDF owns
     # only base_link -> os0_mount_link -> os_sensor.
@@ -184,10 +262,14 @@ def generate_launch_description():
 
         DeclareLaunchArgument('enable_rplidar', default_value='true'),
         DeclareLaunchArgument('rplidar_serial_port', default_value='/dev/rplidar_a1'),
-        DeclareLaunchArgument('enable_d435', default_value='true'),
+        # The camera serials (gantry_d455_serial_no, wrist_d435_serial_no) are
+        # deliberately NOT declared here. See realsense_cameras().
+        DeclareLaunchArgument('enable_gantry_d455', default_value='true'),
+        DeclareLaunchArgument('enable_wrist_d435', default_value='true'),
         DeclareLaunchArgument('color_profile', default_value='640x480x15'),
         DeclareLaunchArgument('depth_profile', default_value='640x480x15'),
-        DeclareLaunchArgument('d435_initial_reset', default_value='false'),
+        DeclareLaunchArgument('gantry_d455_initial_reset', default_value='false'),
+        DeclareLaunchArgument('wrist_d435_initial_reset', default_value='false'),
 
         DeclareLaunchArgument('enable_ouster', default_value='true'),
         DeclareLaunchArgument('ouster_sensor_hostname',
@@ -202,12 +284,16 @@ def generate_launch_description():
         DeclareLaunchArgument('ouster_viz_point_stride', default_value='16'),
         DeclareLaunchArgument('ouster_viz_publish_every_nth', default_value='2'),
 
+        # First, so a missing or malformed camera serial aborts the launch
+        # before MoveIt, the arm or the base driver have been started. The
+        # entities after it are not visited until this one has run.
+        OpaqueFunction(function=realsense_cameras),
+
         xarm_moveit,
         ranger_driver,
         base_footprint_to_base_link,
         deadman,
         rplidar,
-        d435,
         ouster,
         ouster_viz_cloud,
     ])
