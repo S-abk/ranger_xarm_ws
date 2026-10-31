@@ -155,10 +155,13 @@
          just names the frame in the message header. Both links are
          massless fixed children (gantry_d455_link of gantry_d455_mount_link,
          wrist_d435_link of wrist_d435_mount_link). sdformat's URDF parser
-         lumps those into the parent link and, when it does, re-poses every
-         sensor by the lumped fixed-joint transform, so the sensor ends up
-         on the lumped link at the right pose, and for the wrist camera on
-         the xArm flange link, where it moves with joint 6. -->
+         lumps those into the parent link and re-poses every sensor by the
+         lumped fixed-joint transform. Checked with `gz sdf -p` on the
+         expanded model: gantry_d455 ends up on base_footprint (the lumped
+         root) at (-0.319, 0, 1.390) with the lens along +X; wrist_d435 ends
+         up on xarm_link6 (xarm_link_eef is itself lumped into it) at
+         (0.075, 0, 0.025) with the lens along link6's +Z, the tool axis, so
+         it moves with joint 6. -->
 
     <!-- Intel RealSense D455 on the gantry. Colour FOV H90 x V65 (D400
          datasheet rev 021). The image stays 848x480 like the D435, which

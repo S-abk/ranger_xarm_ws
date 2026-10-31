@@ -82,7 +82,7 @@ Wrist D435     /camera/wrist_d435/color/image_raw        wrist_d435_color_optica
 
 The gantry D455 (`gantry_d455_link`, 90 deg HFOV, near 0.18 m) is fixed to
 `base_link`. The wrist D435 (`wrist_d435_link`, 69 deg HFOV, near 0.105 m) is
-fixed to the xArm flange link and moves with joint 6; it exists only with
+fixed to the xArm flange link (gz lumps it into `xarm_link6`) and moves with joint 6; it exists only with
 `add_gripper:=true`, because it sits on the plate between the flange and the
 gripper. Both are 848x480 and 30 Hz, far clip 10 m. gz derives the vertical
 FOV from HFOV and the aspect ratio, so the D455 renders V58.6 rather than the
