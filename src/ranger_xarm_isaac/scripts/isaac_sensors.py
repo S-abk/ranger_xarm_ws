@@ -5,7 +5,8 @@ The description already carries the sensor links, their meshes and their
 CAD-derived mount poses, but it carries no <sensor> tags at all, so
 neither simulator produced a single reading. This module fills that in
 for Isaac: an Ouster OS0 and its built-in IMU on the gantry, an RPLIDAR
-A1M8 on the front deck, and a RealSense D435.
+A1M8 on the front deck, a RealSense D455 on the gantry and a RealSense D435
+on the xArm wrist (it moves with joint 6).
 
 The topics and frame ids deliberately match what the REAL drivers
 publish, because ranger_xarm_sensors already defines that contract and
@@ -15,8 +16,11 @@ nothing above this layer can tell which one it is talking to.
     Ouster OS0    /ouster/points      os_lidar
                   /ouster/imu         os_imu
     RPLIDAR A1M8  /scan               laser_frame
-    RealSense     /camera/d435/color/image_raw        d435_color_optical_frame
-                  /camera/d435/depth/image_rect_raw   d435_depth_optical_frame
+    Gantry D455   /camera/gantry_d455/color/image_raw       gantry_d455_color_optical_frame
+                  /camera/gantry_d455/depth/image_rect_raw  gantry_d455_depth_optical_frame
+                  .../camera_info
+    Wrist D435    /camera/wrist_d435/color/image_raw        wrist_d435_color_optical_frame
+                  /camera/wrist_d435/depth/image_rect_raw   wrist_d435_depth_optical_frame
                   .../camera_info
 
 One consequence is worth stating, because it looks like an omission. The
@@ -24,7 +28,8 @@ sensor-internal frames (os_lidar, os_imu, the optical frames) are NOT
 added to the URDF. On hardware they belong to the drivers: the Ouster
 publishes them from its own metadata, the RealSense from its own
 calibration, and ranger_xarm_sensors is built around that split, which is
-why d435_mount_link exists in the description and nothing below it does.
+why the *_mount_link frames exist in the description and nothing below
+them does.
 Putting them in the URDF would duplicate the driver's transforms the
 moment the real sensor is plugged in. So Isaac publishes them too, as a
 static transform tree hanging off the mount links, which is the same
@@ -39,6 +44,8 @@ calibration. For a simulator that is the right trade; for comparing
 against a recording from the real sensor it is not, and the metadata
 should be read instead.
 """
+
+import math
 
 import omni.kit.commands
 import omni.graph.core as og
@@ -56,10 +63,11 @@ OUSTER_CONFIG = 'OS0_REV7_128ch10hz1024res'
 # _apply_profile for why it cannot simply be named.
 RPLIDAR_BASE_CONFIG = 'Example_Rotary_2D'
 
-# D435 depth stream. The colour stream runs at 1280x720 on hardware, but
-# both are rendered here and each render product costs GPU every frame,
-# so they are matched at the depth resolution instead.
-D435_WIDTH, D435_HEIGHT = 848, 480
+# RealSense depth stream size. The colour stream runs at 1280x720 (D435) or
+# up to 1280x800 (D455) on hardware, but both are rendered here and each
+# render product costs GPU every frame, so they are matched at the depth
+# resolution instead. Used for both cameras.
+CAMERA_WIDTH, CAMERA_HEIGHT = 848, 480
 
 
 def register_config_dir(path):
@@ -183,32 +191,59 @@ def add_imu(stage, link_name, child, translate=None):
     return prim.GetPath().pathString
 
 
-# D435 colour stream: 69 deg horizontal FOV. focal = (aperture/2) /
-# tan(FOV/2) for Isaac's default 20.955 mm aperture.
-D435_APERTURE = 20.955
+# Colour-stream intrinsics per camera model (D400 datasheet rev 021).
+# focal = (aperture/2) / tan(HFOV/2), with Isaac's default 20.955 mm
+# horizontal aperture for both, so only the focal length differs.
+#   D435: 69 deg horizontal FOV (42 vertical)  -> 15.245 mm
+#   D455: 90 deg horizontal FOV (65 vertical)  -> 10.4775 mm
+# At the 848x480 render size the vertical FOV follows from the aspect
+# ratio (D435 42.5, D455 58.6); the D455's datasheet 65 deg is its 16:10
+# mode. Isaac's clip range stays at the add_camera default for both; the
+# minimum-Z figures (D435 0.105 m, D455 0.18 m) are modelled in the gz
+# sim only.
+CAMERA_APERTURE = 20.955
+D435_APERTURE = CAMERA_APERTURE
 D435_FOCAL = 15.245
+D455_APERTURE = CAMERA_APERTURE
+D455_FOCAL = (D455_APERTURE / 2.0) / math.tan(math.radians(90.0 / 2.0))
+CAMERA_MODELS = {
+    'd435': {'horizontal_aperture': D435_APERTURE, 'focal_length': D435_FOCAL},
+    'd455': {'horizontal_aperture': D455_APERTURE, 'focal_length': D455_FOCAL},
+}
 
 
-def add_camera(stage, link_name, child, horizontal_aperture=D435_APERTURE,
-               focal_length=D435_FOCAL):
+def add_camera(stage, link_name, child, model='d435',
+               horizontal_aperture=None, focal_length=None):
     """A camera on a link, looking along the link's +X.
+
+    `model` ('d435' or 'd455') selects the intrinsics from CAMERA_MODELS;
+    explicit horizontal_aperture / focal_length override it. The camera
+    prim is created as a CHILD of the link's prim, so on a link that moves
+    with the articulation (the wrist D435 on the xArm flange) the camera
+    follows it through the physics-driven link transform. The link is
+    found by name (see _find_link): with merge_fixed_joints off, the
+    massless wrist_d435_link and gantry_d455_link exist as prims.
 
     USD cameras look down their own -Z with +Y up, so the prim is turned
     +90 deg about X and then -90 about Z: -Z goes to the link's +X (forward,
-    where the real D435 points) and +Y to its +Z (up). The rotation used to
+    where the real camera points) and +Y to its +Z (up). The rotation used to
     be composed the other way round, which aimed the camera out of the
     robot's right side with its top edge forward.
 
     The prim is NOT the optical frame. Isaac's transform tree names frames
     after prims, and a USD camera's axes are 180 deg about X from a ROS
     optical frame's (+Z forward, +Y down), so a prim called
-    d435_color_optical_frame published a wrong frame under the right name.
+    <name>_color_optical_frame published a wrong frame under the right name.
     The images carry the optical frame ids, and control.launch.py publishes
-    d435_link -> the optical frames statically, as the RealSense driver does.
+    <name>_link -> the optical frames statically, as the RealSense driver
+    does. The camera prims are therefore NOT given to the sensor transform
+    tree in build_sensor_graph: a moving link there would be a second
+    publisher of a frame robot_state_publisher already owns.
 
     One render product feeds both the colour and the depth stream, which
     is a simplification worth knowing about. On the real D435 they are
-    different sensors: the depth pair is wider (87 deg against 69) and
+    different sensors: the depth pair is wider (87 deg against 69; on the
+    D455 87 against 90, so there depth is slightly narrower) and
     sits a short baseline away from the colour imager, so the two have
     their own intrinsics and their own extrinsics. Here they are
     pixel-identical and share the colour FOV, which means depth is
@@ -221,6 +256,11 @@ def add_camera(stage, link_name, child, horizontal_aperture=D435_APERTURE,
     if parent is None:
         print(f'[sensors] no prim for link {link_name}; skipping {child}', flush=True)
         return None
+    intrinsics = CAMERA_MODELS[model]
+    if horizontal_aperture is None:
+        horizontal_aperture = intrinsics['horizontal_aperture']
+    if focal_length is None:
+        focal_length = intrinsics['focal_length']
     path = f'{parent}/{child}'
     cam = UsdGeom.Camera.Define(stage, path)
     # Gf composes left to right: the X turn is applied first.
@@ -232,11 +272,12 @@ def add_camera(stage, link_name, child, horizontal_aperture=D435_APERTURE,
     cam.CreateFocalLengthAttr(focal_length)
     cam.CreateHorizontalApertureAttr(horizontal_aperture)
     cam.CreateClippingRangeAttr(Gf.Vec2f(0.05, 100.0))
-    print(f'[sensors] camera -> {path}', flush=True)
+    print(f'[sensors] camera ({model}, f={focal_length:g} mm) -> {path}',
+          flush=True)
     return path
 
 
-def build_sensor_graph(stage, ouster, ouster_imu, rplidar, d435, robot_root):
+def build_sensor_graph(stage, ouster, ouster_imu, rplidar, cameras, robot_root):
     """One OmniGraph carrying every sensor publisher.
 
     Separate from the control ActionGraph on purpose. That one is driven
@@ -250,7 +291,15 @@ def build_sensor_graph(stage, ouster, ouster_imu, rplidar, d435, robot_root):
     which is how NVIDIA's own RTX Lidar graph does it and keeps the
     render product's lifetime tied to the graph rather than to a python
     reference nobody holds.
+
+    `cameras` is a list of (name, prim_path) pairs, e.g.
+    ('gantry_d455', '/.../gantry_d455_camera'); entries whose prim is None
+    (link not in the model) are skipped. Each camera gets its own render
+    product, colour/depth/camera_info publishers, topics
+    camera/<name>/{color/image_raw,depth/image_rect_raw,color/camera_info}
+    and frame ids <name>_{color,depth}_optical_frame.
     """
+    cameras = [(n, p) for n, p in (cameras or []) if p]
     nodes = [
         ('OnTick', 'omni.graph.action.OnPlaybackTick'),
         ('Context', 'isaacsim.ros2.bridge.ROS2Context'),
@@ -320,35 +369,40 @@ def build_sensor_graph(stage, ouster, ouster_imu, rplidar, d435, robot_root):
                    ('ImuPub.inputs:topicName', 'ouster/imu'),
                    ('ImuPub.inputs:frameId', 'os_imu')]
 
-    if d435:
-        nodes += [('CamRP', 'isaacsim.core.nodes.IsaacCreateRenderProduct'),
-                  ('CamRgb', 'isaacsim.ros2.bridge.ROS2CameraHelper'),
-                  ('CamDepth', 'isaacsim.ros2.bridge.ROS2CameraHelper'),
-                  ('CamInfo', 'isaacsim.ros2.bridge.ROS2CameraInfoHelper')]
-        connect += [('OnTick.outputs:tick', 'CamRP.inputs:execIn'),
-                    ('CamRP.outputs:execOut', 'CamRgb.inputs:execIn'),
-                    ('CamRP.outputs:execOut', 'CamDepth.inputs:execIn'),
-                    ('CamRP.outputs:execOut', 'CamInfo.inputs:execIn')]
-        for n in ('CamRgb', 'CamDepth', 'CamInfo'):
-            connect += [('CamRP.outputs:renderProductPath',
+    for name, prim in cameras:
+        rp, rgb, dep, info = (f'{name}_{k}' for k in ('rp', 'rgb', 'depth', 'info'))
+        nodes += [(rp, 'isaacsim.core.nodes.IsaacCreateRenderProduct'),
+                  (rgb, 'isaacsim.ros2.bridge.ROS2CameraHelper'),
+                  (dep, 'isaacsim.ros2.bridge.ROS2CameraHelper'),
+                  (info, 'isaacsim.ros2.bridge.ROS2CameraInfoHelper')]
+        connect += [('OnTick.outputs:tick', f'{rp}.inputs:execIn'),
+                    (f'{rp}.outputs:execOut', f'{rgb}.inputs:execIn'),
+                    (f'{rp}.outputs:execOut', f'{dep}.inputs:execIn'),
+                    (f'{rp}.outputs:execOut', f'{info}.inputs:execIn')]
+        for n in (rgb, dep, info):
+            connect += [(f'{rp}.outputs:renderProductPath',
                          f'{n}.inputs:renderProductPath'),
                         ('Context.outputs:context', f'{n}.inputs:context')]
-        values += [('CamRP.inputs:cameraPrim', [Sdf.Path(d435)]),
-                   ('CamRP.inputs:width', D435_WIDTH),
-                   ('CamRP.inputs:height', D435_HEIGHT),
-                   ('CamRgb.inputs:topicName', 'camera/d435/color/image_raw'),
-                   ('CamRgb.inputs:frameId', 'd435_color_optical_frame'),
-                   ('CamRgb.inputs:type', 'rgb'),
-                   ('CamDepth.inputs:topicName',
-                    'camera/d435/depth/image_rect_raw'),
-                   ('CamDepth.inputs:frameId', 'd435_depth_optical_frame'),
-                   ('CamDepth.inputs:type', 'depth'),
-                   ('CamInfo.inputs:topicName', 'camera/d435/color/camera_info'),
-                   ('CamInfo.inputs:frameId', 'd435_color_optical_frame')]
+        values += [(f'{rp}.inputs:cameraPrim', [Sdf.Path(prim)]),
+                   (f'{rp}.inputs:width', CAMERA_WIDTH),
+                   (f'{rp}.inputs:height', CAMERA_HEIGHT),
+                   (f'{rgb}.inputs:topicName', f'camera/{name}/color/image_raw'),
+                   (f'{rgb}.inputs:frameId', f'{name}_color_optical_frame'),
+                   (f'{rgb}.inputs:type', 'rgb'),
+                   (f'{dep}.inputs:topicName',
+                    f'camera/{name}/depth/image_rect_raw'),
+                   (f'{dep}.inputs:frameId', f'{name}_depth_optical_frame'),
+                   (f'{dep}.inputs:type', 'depth'),
+                   (f'{info}.inputs:topicName', f'camera/{name}/color/camera_info'),
+                   (f'{info}.inputs:frameId', f'{name}_color_optical_frame')]
 
     # The sensor-internal frames, published the way a driver would. See
-    # the module docstring for why these are not in the URDF.
-    targets = [Sdf.Path(p) for p in (ouster, ouster_imu, rplidar, d435) if p]
+    # the module docstring for why these are not in the URDF. The camera
+    # prims are left out on purpose: their optical frames come from the
+    # static transforms in control.launch.py, and this tree names frames
+    # after prims, so a camera on a moving link would add a second
+    # publisher for a frame robot_state_publisher already owns.
+    targets = [Sdf.Path(p) for p in (ouster, ouster_imu, rplidar) if p]
     if targets:
         nodes += [('SensorTf', 'isaacsim.ros2.bridge.ROS2PublishTransformTree')]
         connect += [('OnTick.outputs:tick', 'SensorTf.inputs:execIn'),

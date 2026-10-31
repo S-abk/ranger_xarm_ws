@@ -4,7 +4,10 @@
     probe.py [--drive] [--sensors] [--arm]
 
 Always: /joint_states arrives and /clock advances. --sensors: the Ouster
-cloud and IMU, the RPLIDAR scan and the D435 colour image publish.
+cloud and IMU, the RPLIDAR scan and the colour images of BOTH cameras
+(gantry D455 and wrist D435) publish; each is reported and must pass
+separately. --no-wrist-camera drops the wrist camera for a model without
+the gripper plate (the wrist camera is mounted on it).
 --drive: forward, crab and spin-in-place commands on /cmd_vel each move the
 base along the commanded axis, measured by /ground_truth/odom, and /odom is
 reported beside it. --arm: the arm's trajectory controller reaches a pose.
@@ -35,6 +38,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--drive', action='store_true')
 ap.add_argument('--sensors', action='store_true')
 ap.add_argument('--arm', action='store_true')
+ap.add_argument('--no-wrist-camera', action='store_true',
+                help='model has no gripper plate, so no wrist D435')
 ap.add_argument('--arm-controller', default='/xarm_xarm6_traj_controller')
 args = ap.parse_args()
 
@@ -65,14 +70,20 @@ subs = [
     node.create_subscription(Odometry, '/ground_truth/odom', keep('truth'), 10),
 ]
 if args.sensors:
-    # gz bridges the camera to /camera/d435/image; Isaac and the real
-    # driver use /camera/d435/color/image_raw.
+    # Isaac, the real driver and the gz bridge's remapped topics all use
+    # /camera/<name>/color/image_raw; the unremapped gz name
+    # /camera/<name>/image is listened to as well. Each camera has its own key.
+    cameras = {'gantry_d455': 'Gantry D455 colour image'}
+    if not args.no_wrist_camera:
+        cameras['wrist_d435'] = 'Wrist D435 colour image'
+    for cam in cameras:
+        for topic in (f'/camera/{cam}/color/image_raw', f'/camera/{cam}/image'):
+            subs.append(node.create_subscription(
+                Image, topic, keep(f'rgb_{cam}'), qos_profile_sensor_data))
     subs += [
         node.create_subscription(PointCloud2, '/ouster/points', keep('ouster'), qos_profile_sensor_data),
         node.create_subscription(Imu, '/ouster/imu', keep('imu'), qos_profile_sensor_data),
         node.create_subscription(LaserScan, '/scan', keep('scan'), qos_profile_sensor_data),
-        node.create_subscription(Image, '/camera/d435/color/image_raw', keep('rgb'), qos_profile_sensor_data),
-        node.create_subscription(Image, '/camera/d435/image', keep('rgb'), qos_profile_sensor_data),
     ]
 cmd_pub = node.create_publisher(Twist, '/cmd_vel', 10)
 
@@ -120,7 +131,7 @@ else:
 if args.sensors:
     hz = rates(5.0)
     for key, name in [('ouster', '/ouster/points'), ('imu', '/ouster/imu'),
-                      ('scan', '/scan'), ('rgb', 'D435 colour image')]:
+                      ('scan', '/scan')] + [(f'rgb_{c}', n) for c, n in cameras.items()]:
         check(name, hz.get(key, 0) > 0.5, f"{hz.get(key, 0):.1f} Hz")
     cloud = last.get('ouster')
     if cloud is not None:
