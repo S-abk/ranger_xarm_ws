@@ -40,6 +40,19 @@ criterion. Measured values:
 | RTX 2000 Ada laptop | Isaac | 0.29-0.31 | 93 / 85 / 88 % |
 | RTX 2000 Ada laptop | Gazebo | 0.88 | 94 / 90 / 94 % |
 
+On this configuration (gantry D455 and wrist D435):
+
+| Machine | Simulator | Real-time factor | Forward / crab / spin |
+| --- | --- | --- | --- |
+| RTX 2000 Ada laptop | Isaac | 0.24-0.25 | 93 / 89 / 90 % |
+| RTX 2000 Ada laptop | Gazebo | 0.76 | 94 / 89 / 95 % |
+
+In Isaac the second camera costs about 16 % of the simulation speed: mean
+real-time factor 0.296 with one camera and 0.248 with two, three runs each on
+the same machine. Physics and rendering step together, so every extra render
+product lengthens each step. Since the drive window is in sim time, this no
+longer lowers the drive percentages.
+
 Exit status 0 means every check passed, 1 means a check failed, and 2 means
 the simulation never came up. One line per check is printed, and the launch
 logs' directory is printed at the end. Each script takes

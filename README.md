@@ -4,6 +4,36 @@ ROS 2 Jazzy workspace for a **Ranger Mini V3 omnidirectional base + UFACTORY
 xArm 6** mobile manipulator, with an Ouster OS0 lidar, two Intel RealSense cameras (a D455 on the gantry, a D435 on the wrist)
 and an RPLIDAR A1 on a sensor gantry.
 
+## Hardware configuration
+
+`main` targets this hardware:
+
+- **Gantry:** an Intel RealSense **D455** on the 140 mm PETG gantry support.
+  Printable mesh: [`gantry_support_140.stl`](src/ranger_xarm_description/meshes/visual/gantry_support_140.stl).
+- **Wrist:** an Intel RealSense **D435** on the PETG wrist plate, between the
+  xArm flange and the gripper. Printable mesh: [`wrist_d435_plate.stl`](src/ranger_xarm_description/meshes/visual/wrist_d435_plate.stl).
+
+Both meshes are exact and print-ready, in mm, positioned in their link frames,
+so re-orient them in the slicer. Each camera needs its own serial at bringup
+(see [Running the physical robot](#running-the-physical-robot)). What changed,
+and every renamed frame, topic and launch argument, is in
+[`docs/MIGRATION.md`](docs/MIGRATION.md).
+
+### Still on the gantry-D435 robot?
+
+The previous configuration, one D435 on the 110 mm gantry support, is the
+branch `legacy/gantry-d435`, maintained for fixes only. The tag
+`legacy-gantry-d435` is its exact last commit before `main` moved. To switch:
+
+```bash
+cd ~/ranger_xarm_ws
+git fetch origin
+git checkout legacy/gantry-d435
+vcs import --recursive src < ranger_xarm.repos
+rm -rf build install log
+colcon build
+```
+
 It gives you the robot and nothing else: description, MoveIt configuration,
 Gazebo and NVIDIA Isaac Sim simulation, sensor and base bringup. There is no application in here.
 Build yours as a package that depends on these.
