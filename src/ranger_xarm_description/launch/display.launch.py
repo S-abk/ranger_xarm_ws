@@ -32,10 +32,11 @@ def generate_launch_description():
         DeclareLaunchArgument('use_static_collision', default_value='true'),
         DeclareLaunchArgument('xarm_mount_yaw', default_value='0.0'),
         DeclareLaunchArgument('use_laptop_collision', default_value='true'),
-        # PENDING-OPERATOR: wrist camera roll about the tool axis. Empty = the
-        # model's wrist_d435_roll_nom (calibration.xacro), so RViz always shows
-        # what MoveIt and the sims use. Override only to compare candidates:
-        # 0.0 = A (camera on the gripper root's +X side), 3.141592653589793 = B.
+        # Wrist camera roll about the tool axis. Empty = the model's
+        # wrist_d435_roll_nom (calibration.xacro; 0.0 = A, confirmed), so RViz
+        # always shows what MoveIt and the sims use. Override only for
+        # recalibration: 0.0 = A (camera on the gripper root's +X side),
+        # 3.141592653589793 = B.
         DeclareLaunchArgument('wrist_d435_roll', default_value='',
                               description='Wrist D435 roll override: empty = wrist_d435_roll_nom; 0.0 (A) or 3.141592653589793 (B).'),
         Node(package='robot_state_publisher', executable='robot_state_publisher', output='screen', parameters=[robot_description]),

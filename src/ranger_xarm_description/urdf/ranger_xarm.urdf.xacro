@@ -36,9 +36,9 @@
   <xacro:arg name="rplidar_dx" default="0.0"/><xacro:arg name="rplidar_dy" default="0.0"/><xacro:arg name="rplidar_dz" default="0.0"/>
   <xacro:arg name="os0_dx" default="0.0"/><xacro:arg name="os0_dy" default="0.0"/><xacro:arg name="os0_dz" default="0.0"/>
   <xacro:arg name="gantry_d455_dx" default="0.0"/><xacro:arg name="gantry_d455_dy" default="0.0"/><xacro:arg name="gantry_d455_dz" default="0.0"/>
-  <!-- PENDING-OPERATOR wrist camera roll about the tool axis (0 or pi); see calibration.xacro.
+  <!-- Wrist camera roll about the tool axis; see calibration.xacro (confirmed 0 = A).
        Empty (the default) means wrist_d435_roll_nom, the single source of the value;
-       set it only to compare candidates (display.launch.py passes it through). -->
+       set it only for recalibration (display.launch.py passes it through). -->
   <xacro:arg name="wrist_d435_roll" default=""/>
 
   <!-- Base drive. Following the same rule the arm already uses; simulation

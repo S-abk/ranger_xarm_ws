@@ -47,7 +47,7 @@ frames:
     xyz: [0.0, 0.0, 0.0]
     rpy: [3.141592654, 0.0, 1.570796327]   # + wrist_d435_roll on yaw
     method: T_gripperRoot_gripperCAD(roll) * T_gripperCAD_plateCAD (CAD camera_:1)
-    confidence: roll PENDING-OPERATOR (0 or pi about the tool axis); everything else high
+    confidence: high; roll 0 (candidate A) confirmed by SAO on 2026-11-10 by visual inspection, live point-cloud check still to come
     note: Plate CAD frame at the flange/gripper interface centre. Adds no spacer.
 
   wrist_d435_mount_link:

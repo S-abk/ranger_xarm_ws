@@ -37,11 +37,10 @@
        the flange/gripper interface (root z = 0), which puts the plate origin
        exactly at the interface centre, as the CAD has it.
 
-       PENDING-OPERATOR: wrist_d435_roll_nom selects the roll.
-         0  (candidate A) camera side = gripper root +X
-         pi (candidate B) camera side = gripper root -X
-       The operator picks it by comparing RViz with the robot (CONTRACT §6).
-       It can be overridden with the xacro arg wrist_d435_roll. -->
+       wrist_d435_roll_nom = 0 (candidate A: camera side = gripper root +X).
+       Confirmed by SAO on 2026-11-10 by visual inspection. The live
+       point-cloud check is still to come. The xacro arg wrist_d435_roll
+       overrides it for later recalibration. -->
   <xacro:property name="wrist_d435_roll_nom" value="0.0"/>
   <!-- T_gripperRoot_gripperCAD at roll 0: R columns (gripperCAD x, y, z in
        root axes) = (0,1,0), (0,0,1), (1,0,0); t = (0, 0, 0.041498179).
