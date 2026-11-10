@@ -89,29 +89,14 @@
         <material name="custom_structure_material"><color rgba="0.34 0.34 0.34 1"/></material>
       </visual>
       <!-- 140 mm PETG gantry camera/Ouster support (Cam_3d_lidar_mount_2,
-           2026-10-30 CAD), drawn as three simplified primitives derived from
-           the private CAD: back plate, top deck and rear stiffener (the
-           stiffener box also covers the small gusset below it). No holes or
-           fillets. Each box is 0.25 mm larger per side than its part, so
-           together they enclose every vertex of the old 110 mm support block
-           that custom_structure_cad.stl still carries (2088/2088 triangle
-           corners): no coplanar faces to flicker and no grey showing through.
-           Unlike the old solid 35 x 140 x 75 mm box, they leave the D455 in
-           front of the back plate visible. Visual only; the collision below
-           stays the conservative solid box. -->
-      <visual name="gantry_support_back_plate_visual">
-        <origin xyz="-0.3475 0 1.081025"/>
-        <geometry><box size="0.0055 0.1405 0.0655"/></geometry>
-        <material name="petg_material"><color rgba="0.85 0.45 0.10 1"/></material>
-      </visual>
-      <visual name="gantry_support_top_deck_visual">
-        <origin xyz="-0.3375 0 1.118525"/>
-        <geometry><box size="0.0355 0.1105 0.0105"/></geometry>
-        <material name="petg_material"><color rgba="0.85 0.45 0.10 1"/></material>
-      </visual>
-      <visual name="gantry_support_stiffener_visual">
-        <origin xyz="-0.3525 0 1.09715"/>
-        <geometry><box size="0.0055 0.1140 0.0333"/></geometry>
+           2026-10-30 CAD): exact mesh tessellated from the project's private
+           CAD (linear deflection 0.05 mm), holes included, closed and
+           manifold, in mm in this link's (= base_link) frame. The old 110 mm
+           bracket was removed from custom_structure_cad.stl so the two do not
+           share faces. Visual only; the collision below stays the
+           conservative solid box. See the package README (Meshes). -->
+      <visual name="gantry_support_140_visual">
+        <geometry><mesh filename="package://ranger_xarm_description/meshes/visual/gantry_support_140.stl" scale="0.001 0.001 0.001"/></geometry>
         <material name="petg_material"><color rgba="0.85 0.45 0.10 1"/></material>
       </visual>
       <xacro:if value="${use_collision}">

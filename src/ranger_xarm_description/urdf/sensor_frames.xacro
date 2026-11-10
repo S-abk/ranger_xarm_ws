@@ -72,8 +72,10 @@
          wrist_d435_link        semantic camera_link (X along the tool axis). -->
   <xacro:macro name="ranger_wrist_d435" params="flange_link roll show_sensor_collision:=true">
     <link name="wrist_d435_plate_link">
-      <!-- Plate envelope from CAD: 80 (x) x 125 (y, -40..+85 mm) x 5.5 (z, 0..5.5 mm behind the interface). -->
-      <visual><origin xyz="0 0.0225 0.00275"/><geometry><box size="0.080 0.125 0.0055"/></geometry><material name="petg_material"><color rgba="0.85 0.45 0.10 1"/></material></visual>
+      <!-- Visual: exact mesh of the plate, tessellated from the project's private CAD
+           (closed, manifold, holes included), in mm in this link's frame (= plate CAD frame).
+           Collision: the plate envelope from CAD, 80 (x) x 125 (y, -40..+85 mm) x 5.5 (z, 0..5.5 mm behind the interface). -->
+      <visual><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/wrist_d435_plate.stl" scale="0.001 0.001 0.001"/></geometry><material name="petg_material"><color rgba="0.85 0.45 0.10 1"/></material></visual>
       <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0 0.0225 0.00275"/><geometry><box size="0.080 0.125 0.0055"/></geometry></collision></xacro:if>
     </link>
     <joint name="flange_to_wrist_d435_plate" type="fixed">

@@ -57,7 +57,7 @@ Two RealSense units, each with the same frame pattern:
 | `wrist_d435` | standard D435 | `wrist_d435_plate_link` on `xarm_link_eef` | CAD part frame of the D435, 25.05 mm out along the tool axis and 75 mm off-axis | camera_link, X along the tool axis |
 
 - `<name>_mount_link` is the CAD part frame and the mesh is drawn in it. `<name>_link` is a fixed permutation of it. robot_state_publisher owns both; the RealSense driver (`base_frame_id=link`) owns only the frames below `<name>_link`. See `ranger_xarm_sensors`.
-- Printed parts never use `*_mount_link` names. The 140 mm PETG gantry support is part of `custom_structure_link` (`camera_lidar_mount_collision`, a conservative solid box, plus three visual boxes `gantry_support_{back_plate,top_deck,stiffener}_visual`: simplified primitives from the private CAD that also hide the old 110 mm block `custom_structure_cad.stl` still carries). The wrist plate is `wrist_d435_plate_link`.
+- Printed parts never use `*_mount_link` names. The 140 mm PETG gantry support is part of `custom_structure_link` (`camera_lidar_mount_collision`, a conservative solid box, plus the exact visual mesh `gantry_support_140.stl`). The old 110 mm bracket has been removed from `custom_structure_cad.stl`. The wrist plate is `wrist_d435_plate_link` (exact visual mesh `wrist_d435_plate.stl`, collision = its 80 x 125 x 5.5 mm envelope).
 - The wrist plate and camera are fixed children of the flange link, siblings of the upstream gripper. The plate adds no spacer, so flange->gripper and flange->TCP are unchanged, and everything rotates rigidly with joint 6.
 - **Wrist roll (confirmed: A).** The CAD fixes the wrist geometry up to a 180 deg roll about the tool axis relative to the gripper root. `wrist_d435_roll_nom` in `calibration.xacro` is `0.0` (candidate A: camera on the gripper root's +X side), confirmed by SAO on 2026-11-10 by visual inspection. The live point-cloud check is still to come. The xacro arg `wrist_d435_roll` stays as an override for later recalibration (`0.0` = A, `3.141592653589793` = B, the -X side; empty = `wrist_d435_roll_nom`); `display.launch.py` passes it through.
 - Masses: D455 0.116 kg and D435 0.075 kg nominal (D400 datasheet rev 021). The PETG parts, fasteners and cable carry no inertial because their mass is unknown. The xArm payload settings were not changed.
@@ -65,6 +65,7 @@ Two RealSense units, each with the same frame pattern:
 ## Mesh sources and licences
 
 - `realsense_d455.stl`: copied unchanged from `realsense2_description` (`meshes/d455.stl`, ROS 2 Jazzy package, Apache License 2.0, Intel/RealSense). Its frame matches the CAD part frame of the D455 to within 0.1 mm.
+- `gantry_support_140.stl` and `wrist_d435_plate.stl` are the project's own PETG camera mounts, tessellated from the project's private CAD (OpenCASCADE BRepMesh, linear deflection 0.05 mm). They are **exact and print-ready**: holes included, each a single closed, manifold solid with outward normals and no open edges. They are in millimetres and positioned in their link frames (`custom_structure_link` = `base_link` for the support, the plate's CAD part frame for the plate), not on a print bed, so re-orient them in the slicer. They are covered by this package's licence (BSD-3-Clause, `package.xml`). The CAD itself is not in the repo.
 - All other meshes are exported from the project CAD.
 
 ## Mesh units
