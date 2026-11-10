@@ -139,8 +139,8 @@ Each package carries its own licence in its `package.xml`:
 Meshes with their own licence, in `src/ranger_xarm_description/meshes/visual/`:
 
 - `gantry_support_140.stl` and `wrist_d435_plate.stl`, the printable camera
-  mounts: [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit
-  the ranger_xarm_ws project when you share or adapt them.
+  mounts: [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/). Attribution:
+  Shuaib Olanrewaju. Give this credit when you share or adapt the meshes.
 - `realsense_d455.stl`: Apache-2.0, copied unchanged from Intel RealSense's
   `realsense2_description` (`meshes/d455.stl`).
 
