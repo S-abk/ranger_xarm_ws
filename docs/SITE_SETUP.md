@@ -165,10 +165,20 @@ Measured on a working system, so treat large deviations as real:
 | Arm pose is real | `ros2 topic echo /joint_states --once` | matches where the arm physically is — all zeros usually means it is *not* reading the arm |
 | Lidar | `ros2 topic hz /ouster/points` | 10 Hz standalone; 8–9 Hz under full load is contention, not loss |
 | Lidar cloud | `ros2 topic echo /ouster/points --once --field width` | 1024 (and height 128 for a 128-beam unit) |
-| Gantry camera | `ros2 topic hz /camera/gantry_d455/depth/image_rect_raw` | ~15 Hz |
-| Wrist camera | `ros2 topic hz /camera/wrist_d435/depth/image_rect_raw` | ~15 Hz |
 | Sensor mounting | `ros2 run tf2_ros tf2_echo base_footprint os_sensor` | resolves; z ≈ 1.47 m |
 | Kernel not dropping | `grep -A1 ^Udp: /proc/net/snmp` | `RcvbufErrors` **not increasing** between samples |
+
+**Not yet measured.** Neither camera has run on this robot. The values below
+are what the launch configuration asks for (`depth_profile` default
+`640x480x15` in `d400_camera.launch.py`), not readings from a working system,
+so a deviation may mean the expectation is wrong rather than the hardware.
+Whoever first measures them should move each row into the table above with the
+observed value.
+
+| Check | Command | Expected (unmeasured) |
+| --- | --- | --- |
+| Gantry camera (D455) | `ros2 topic hz /camera/gantry_d455/depth/image_rect_raw` | ~15 Hz, from the configured profile |
+| Wrist camera (D435) | `ros2 topic hz /camera/wrist_d435/depth/image_rect_raw` | ~15 Hz, from the configured profile |
 
 ## 6. Things that will catch you
 
