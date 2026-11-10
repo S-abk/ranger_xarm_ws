@@ -5,6 +5,8 @@
   <description>Combined Ranger Mini V3, xArm6, sensors, custom structure and conservative laptop collision description.</description>
   <maintainer email="maintainer@example.com">Maintainer</maintainer>
   <license>BSD-3-Clause</license>
+  <!-- meshes/visual/gantry_support_140.stl and wrist_d435_plate.stl (printable mounts) only -->
+  <license>CC-BY-4.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <exec_depend>xacro</exec_depend>
