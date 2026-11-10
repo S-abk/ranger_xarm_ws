@@ -15,7 +15,7 @@ tools/smoke_test/gazebo.sh          # or: gazebo.sh arm | gazebo.sh base
 
 | Scenario | Launch | Checks |
 | --- | --- | --- |
-| `arm` | `sim.launch.py` as shipped (base welded to the world) | controllers active, `/joint_states`, `/clock`, arm reaches a pose |
+| `arm` | `sim.launch.py` as shipped (base welded to the world), plus `ranger_xarm_isaac`'s `moveit.launch.py` | controllers active, `/joint_states`, `/clock`, arm reaches a pose, MoveIt plans and executes a joint goal and a pose goal |
 | `base` | `drive_base:=true sensors:=true` | the above, plus Ouster cloud and IMU, `/scan`, the colour image of each camera (gantry D455 and wrist D435, reported separately, both required), and forward / crab / spin-in-place each moving the base along the commanded axis (by `/ground_truth/odom`, with `/odom` beside it) |
 
 In Isaac Sim (about a minute and a half, plus Isaac's first-run shader
@@ -29,7 +29,8 @@ tools/smoke_test/isaac.sh
 
 This generates the wheeled USD into the log directory, so the one in
 `install/` is left alone. It then starts `isaac_bringup.py --headless` and
-`control.launch.py drive_base:=true`, and runs the `base` checks.
+`control.launch.py drive_base:=true` and `moveit.launch.py`, and runs the
+`base` checks plus the MoveIt ones.
 
 The real-time factor depends on the machine and is information, not a pass
 criterion. Measured values:
@@ -67,4 +68,9 @@ Both cameras must publish for `--sensors` to pass; `--no-wrist-camera` drops
 the wrist D435 check for a model without the gripper plate (`add_gripper:=false`).
 
 `probe.py` is simulator-agnostic: point it at anything already running
-(`probe.py --drive --sensors --arm`) and it runs the same checks.
+(`probe.py --drive --sensors --arm --moveit`) and it runs the same checks.
+`--moveit` needs `move_group` running (`ranger_xarm_isaac moveit.launch.py`);
+it plans and executes through the MoveGroup action, so the collision model
+(wrist plate and D435, gantry D455 and its support), the SRDF and the
+controller map are all exercised. A joint goal passes within 2 degrees, a
+pose goal within 10 mm of the target TCP position.

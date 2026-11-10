@@ -3,7 +3,8 @@
 #
 #   tools/smoke_test/gazebo.sh [arm|base|all]      (default all)
 #
-#   arm   sim.launch.py as it ships: base welded to the world; the arm moves
+#   arm   sim.launch.py as it ships: base welded to the world; the arm moves,
+#         then MoveIt (ranger_xarm_isaac moveit.launch.py) plans and executes
 #   base  drive_base:=true sensors:=true; drive, sensors and the arm
 #
 # Needs the workspace built (colcon build --packages-up-to ranger_xarm_gazebo).
@@ -18,20 +19,24 @@ WS=${WS:-$(cd "$HERE/../.." && pwd)}
 WHICH=${1:-all}
 case $WHICH in arm|base|all) ;; *) echo "usage: $0 [arm|base|all]"; exit 2;; esac
 LOG_DIR=${LOG_DIR:-$(mktemp -d -t ranger_xarm_smoke.XXXX)}
+mkdir -p "$LOG_DIR"
 
 export ROS_DOMAIN_ID=${SMOKE_DOMAIN_ID:-42} ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 export GZ_PARTITION=ranger_xarm_smoke_$$
 # The ROS setup files read unset variables, so no `set -u` before this.
 source "$WS/install/setup.bash" || { echo "build the workspace first: $WS/install"; exit 2; }
 
-PG=
+PG= MG=
 stop() {
   [ -z "$PG" ] && return
-  kill -INT -- -"$PG" 2>/dev/null
-  for _ in $(seq 1 10); do kill -0 -- -"$PG" 2>/dev/null || break; sleep 1; done
-  kill -9 -- -"$PG" 2>/dev/null
+  for g in $MG $PG; do kill -INT -- -"$g" 2>/dev/null; done
+  for _ in $(seq 1 10); do
+    alive=; for g in $MG $PG; do kill -0 -- -"$g" 2>/dev/null && alive=1; done
+    [ -z "$alive" ] && break; sleep 1
+  done
+  for g in $MG $PG; do kill -9 -- -"$g" 2>/dev/null; done
   pkill -9 -f "gz sim.*$GZ_PARTITION" 2>/dev/null   # gz can outlive its launch
-  PG=
+  PG= MG=
 }
 trap 'stop; ros2 daemon stop >/dev/null 2>&1' EXIT
 
@@ -54,13 +59,19 @@ scenario() {
     echo "FAIL  controllers never came up; tail of $log:"; tail -20 "$log"; stop; return 2
   fi
   echo "controllers active after ${up} s"
+  if [[ " ${probe[*]} " == *" --moveit "* ]]; then
+    # MoveIt's launch lives in ranger_xarm_isaac, but nothing in it is Isaac-specific:
+    # the controller names and use_sim_time match this simulation too.
+    setsid ros2 launch ranger_xarm_isaac moveit.launch.py > "$LOG_DIR/gazebo_${name}_moveit.log" 2>&1 &
+    MG=$!
+  fi
   python3 "$HERE/probe.py" "${probe[@]}"; local rc=$?
   stop
   return $rc
 }
 
 rc=0
-case $WHICH in arm|all) scenario arm xarm_xarm_gripper_traj_controller --arm -- || rc=$?;; esac
+case $WHICH in arm|all) scenario arm xarm_xarm_gripper_traj_controller --arm --moveit -- || rc=$?;; esac
 case $WHICH in base|all)
   scenario base ranger_wheel_controller --drive --sensors --arm -- drive_base:=true sensors:=true || { r=$?; [ $rc -eq 0 ] && rc=$r; };;
 esac

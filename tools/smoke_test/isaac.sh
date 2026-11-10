@@ -1,7 +1,7 @@
 #!/bin/bash
 # Smoke-test the Isaac Sim bringup: generate the wheeled USD, start Isaac
-# headless, start control.launch.py drive_base:=true, run probe.py with
-# every check (drive, sensors, arm), shut it all down.
+# headless, start control.launch.py drive_base:=true and moveit.launch.py,
+# run probe.py with every check (drive, sensors, arm, MoveIt), shut it all down.
 #
 #   tools/smoke_test/isaac.sh
 #
@@ -13,6 +13,7 @@
 HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
 WS=${WS:-$(cd "$HERE/../.." && pwd)}
 LOG_DIR=${LOG_DIR:-$(mktemp -d -t ranger_xarm_smoke.XXXX)}
+mkdir -p "$LOG_DIR"
 
 [ -x "$ISAACSIM_PYTHON_EXE" ] || { echo "set ISAACSIM_PYTHON_EXE to Isaac Sim's python"; exit 2; }
 export ROS_DOMAIN_ID=${SMOKE_DOMAIN_ID:-42} ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
@@ -23,15 +24,15 @@ export FASTRTPS_DEFAULT_PROFILES_FILE=$(ros2 pkg prefix ranger_xarm_bringup)/sha
 P=$(ros2 pkg prefix ranger_xarm_isaac)
 USD=$LOG_DIR/usd/ranger_xarm_wheeled.usd
 
-IG= CG=
+IG= CG= MG=
 stop() {
-  for g in $CG $IG; do kill -INT -- -"$g" 2>/dev/null; done
+  for g in $MG $CG $IG; do kill -INT -- -"$g" 2>/dev/null; done
   for _ in $(seq 1 10); do
-    alive=; for g in $CG $IG; do kill -0 -- -"$g" 2>/dev/null && alive=1; done
+    alive=; for g in $MG $CG $IG; do kill -0 -- -"$g" 2>/dev/null && alive=1; done
     [ -z "$alive" ] && break; sleep 1
   done
-  for g in $CG $IG; do kill -9 -- -"$g" 2>/dev/null; done
-  IG= CG=
+  for g in $MG $CG $IG; do kill -9 -- -"$g" 2>/dev/null; done
+  IG= CG= MG=
 }
 trap 'stop; ros2 daemon stop >/dev/null 2>&1' EXIT
 fail_setup() { echo "FAIL  $1; tail of $2:"; tail -20 "$2"; echo "isaac smoke test FAILED"; exit 2; }
@@ -67,7 +68,11 @@ done
 [ -n "$up" ] || fail_setup "controllers never came up" "$LOG_DIR/control.log"
 echo "controllers active after ${up} s"
 
-python3 "$HERE/probe.py" --drive --sensors --arm; rc=$?
+echo "=== isaac: moveit.launch.py"
+setsid ros2 launch ranger_xarm_isaac moveit.launch.py > "$LOG_DIR/moveit.log" 2>&1 &
+MG=$!
+
+python3 "$HERE/probe.py" --drive --sensors --arm --moveit; rc=$?
 stop
 echo "logs: $LOG_DIR"
 [ $rc -eq 0 ] && echo "isaac smoke test PASSED" || echo "isaac smoke test FAILED"
