@@ -1,8 +1,38 @@
 # ranger_xarm_ws
 
 ROS 2 Jazzy workspace for a **Ranger Mini V3 omnidirectional base + UFACTORY
-xArm 6** mobile manipulator, with an Ouster OS0 lidar, an Intel RealSense D435
+xArm 6** mobile manipulator, with an Ouster OS0 lidar, two Intel RealSense cameras (a D455 on the gantry, a D435 on the wrist)
 and an RPLIDAR A1 on a sensor gantry.
+
+## Hardware configuration
+
+`main` targets this hardware:
+
+- **Gantry:** an Intel RealSense **D455** on the 140 mm PETG gantry support.
+  Printable mesh: [`gantry_support_140.stl`](src/ranger_xarm_description/meshes/visual/gantry_support_140.stl).
+- **Wrist:** an Intel RealSense **D435** on the PETG wrist plate, between the
+  xArm flange and the gripper. Printable mesh: [`wrist_d435_plate.stl`](src/ranger_xarm_description/meshes/visual/wrist_d435_plate.stl).
+
+Both meshes are exact and print-ready, in mm, positioned in their link frames,
+so re-orient them in the slicer. Each camera needs its own serial at bringup
+(see [Running the physical robot](#running-the-physical-robot)). What changed,
+and every renamed frame, topic and launch argument, is in
+[`docs/MIGRATION.md`](docs/MIGRATION.md).
+
+### Still on the gantry-D435 robot?
+
+The previous configuration, one D435 on the 110 mm gantry support, is the
+branch `legacy/gantry-d435`, maintained for fixes only. The tag
+`legacy-gantry-d435` is its exact last commit before `main` moved. To switch:
+
+```bash
+cd ~/ranger_xarm_ws
+git fetch origin
+git checkout legacy/gantry-d435
+vcs import --recursive src < ranger_xarm.repos
+rm -rf build install log
+colcon build
+```
 
 It gives you the robot and nothing else: description, MoveIt configuration,
 Gazebo and NVIDIA Isaac Sim simulation, sensor and base bringup. There is no application in here.
@@ -93,6 +123,31 @@ ros2 launch ranger_xarm_moveit_config planning_demo.launch.py   # plan only
 ros2 launch ranger_xarm_moveit_config fake_execution.launch.py  # mock execution
 ```
 
+## Licensing
+
+Each package carries its own licence in its `package.xml`:
+
+| Package | Licence |
+| --- | --- |
+| `ranger_xarm_description` | BSD-3-Clause (except the meshes listed below) |
+| `ranger_xarm_moveit_config` | BSD-3-Clause |
+| `ranger_xarm_bringup` | BSD-3-Clause |
+| `ranger_xarm_sensors` | BSD-3-Clause |
+| `ranger_xarm_gazebo` | Apache-2.0 |
+| `ranger_xarm_isaac` | Apache-2.0 |
+
+Meshes with their own licence, in `src/ranger_xarm_description/meshes/visual/`:
+
+- `gantry_support_140.stl` and `wrist_d435_plate.stl`, the printable camera
+  mounts: CC-BY 4.0 (full text in
+  [`src/ranger_xarm_description/LICENSE-CC-BY-4.0`](src/ranger_xarm_description/LICENSE-CC-BY-4.0)). Attribution:
+  Shuaib Olanrewaju. Give this credit when you share or adapt the meshes.
+- `realsense_d455.stl`: Apache-2.0, copied unchanged from Intel RealSense's
+  `realsense2_description` (`meshes/d455.stl`).
+
+Upstream sources pulled by `vcs import` (`ranger_xarm.repos`) keep their own
+licences.
+
 ## Packages
 
 | Package | What it is | Needs hardware drivers |
@@ -179,7 +234,7 @@ because which ones you need depends on which sensors you have:
 
 - `ranger_base`, `ranger_msgs` — AgileX Ranger CAN driver
 - `ouster_ros` — Ouster OS0
-- `realsense2_camera` — Intel RealSense D435
+- `realsense2_camera` — Intel RealSense D455 and D435
 - `sllidar_ros2` — RPLIDAR A1
 
 With those in the workspace:
@@ -187,15 +242,21 @@ With those in the workspace:
 ```bash
 colcon build
 ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<xarm controller ip> \
-    ouster_sensor_hostname:=<ouster host>
+    ouster_sensor_hostname:=<ouster host> \
+    gantry_d455_serial_no:=<digits> wrist_d435_serial_no:=<digits>
 ```
 
+Each RealSense needs its own serial (digits, from `rs-enumerate-devices`) and has
+no default, so the launch can never bind whichever camera enumerates first.
+Details: `src/ranger_xarm_sensors/README.md`.
+
 Every sensor is an `enable_*` argument, so a subset works without editing
-anything:
+anything. A camera that is off needs no serial:
 
 ```bash
 ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<ip> \
-    enable_ouster:=false enable_rplidar:=false enable_base:=false
+    enable_ouster:=false enable_rplidar:=false enable_base:=false \
+    enable_gantry_d455:=false enable_wrist_d435:=false
 ```
 
 Staged bringup, which is how to debug a bad start rather than an alternative

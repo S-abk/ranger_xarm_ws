@@ -99,7 +99,23 @@
   <disable_collisions link1="ranger_cad_link" link2="rplidar_body_link" reason="Mounted"/>
   <disable_collisions link1="custom_structure_link" link2="rplidar_body_link" reason="Mounted"/>
   <disable_collisions link1="custom_structure_link" link2="os0_mount_link" reason="Mounted"/>
-  <disable_collisions link1="custom_structure_link" link2="d435_mount_link" reason="Mounted"/>
+  <!-- Gantry D455 sits inside the PETG support's collision envelope (the support's
+       35 mm depth and the camera body share x in [-0.345, -0.320]); it is bolted to it. -->
+  <disable_collisions link1="custom_structure_link" link2="gantry_d455_mount_link" reason="Mounted"/>
   <disable_collisions link1="custom_structure_link" link2="laptop_collision_link" reason="Mounted"/>
   <disable_collisions link1="custom_structure_link" link2="xarm_link_base" reason="Mounted"/>
+
+  <!-- Wrist D435 on its PETG plate, clamped between the xArm flange and the gripper.
+       Only physically attached pairs are listed; every other pair stays checked
+       (a folded wrist can put the camera against xarm_link1/xarm_link_base, and
+       MoveIt must still see that). Contacts measured on the expanded URDF at zero
+       pose and through a joint-6 sweep, for both wrist-roll candidates. -->
+  <!-- Plate sits inside the end-tool flange region (CAD: plate x-range within the
+       distal arm part); ~2.7 mm box/mesh overlap with xarm_link6. -->
+  <disable_collisions link1="xarm_link6" link2="wrist_d435_plate_link" reason="Mounted"/>
+  <!-- Gripper rear face is clamped against the plate (the gripper mesh spigot
+       reaches 9 mm behind the interface); ~1.9 mm overlap. -->
+  <disable_collisions link1="xarm_xarm_gripper_base_link" link2="wrist_d435_plate_link" reason="Mounted"/>
+  <!-- Camera is screwed to the plate (CAD contact, 0.008 mm; ~0.2 mm with the boxes). -->
+  <disable_collisions link1="wrist_d435_plate_link" link2="wrist_d435_mount_link" reason="Mounted"/>
 </robot>

@@ -35,7 +35,11 @@
   <xacro:arg name="xarm_dx" default="0.0"/><xacro:arg name="xarm_dy" default="0.0"/><xacro:arg name="xarm_dz" default="0.0"/>
   <xacro:arg name="rplidar_dx" default="0.0"/><xacro:arg name="rplidar_dy" default="0.0"/><xacro:arg name="rplidar_dz" default="0.0"/>
   <xacro:arg name="os0_dx" default="0.0"/><xacro:arg name="os0_dy" default="0.0"/><xacro:arg name="os0_dz" default="0.0"/>
-  <xacro:arg name="d435_dx" default="0.0"/><xacro:arg name="d435_dy" default="0.0"/><xacro:arg name="d435_dz" default="0.0"/>
+  <xacro:arg name="gantry_d455_dx" default="0.0"/><xacro:arg name="gantry_d455_dy" default="0.0"/><xacro:arg name="gantry_d455_dz" default="0.0"/>
+  <!-- Wrist camera roll about the tool axis; see calibration.xacro (confirmed 0 = A).
+       Empty (the default) means wrist_d435_roll_nom, the single source of the value;
+       set it only for recalibration (display.launch.py passes it through). -->
+  <xacro:arg name="wrist_d435_roll" default=""/>
 
   <!-- Base drive. Following the same rule the arm already uses; simulation
        changes xacro arguments, not the model; both default to the
@@ -149,7 +153,7 @@
   <xacro:ranger_sensor_frames parent="base_link"
     rplidar_x="${rplidar_x_nom+float($(arg rplidar_dx))}" rplidar_y="${rplidar_y_nom+float($(arg rplidar_dy))}" rplidar_z="${rplidar_z_nom+float($(arg rplidar_dz))}"
     os0_x="${os0_x_nom+float($(arg os0_dx))}" os0_y="${os0_y_nom+float($(arg os0_dy))}" os0_z="${os0_z_nom+float($(arg os0_dz))}"
-    d435_x="${d435_x_nom+float($(arg d435_dx))}" d435_y="${d435_y_nom+float($(arg d435_dy))}" d435_z="${d435_z_nom+float($(arg d435_dz))}"
+    gantry_d455_x="${gantry_d455_x_nom+float($(arg gantry_d455_dx))}" gantry_d455_y="${gantry_d455_y_nom+float($(arg gantry_d455_dy))}" gantry_d455_z="${gantry_d455_z_nom+float($(arg gantry_d455_dz))}"
     show_sensor_collision="true"/>
 
   <xacro:if value="$(arg use_laptop_collision)">
@@ -172,10 +176,17 @@
       velocity_control="$(arg xarm_velocity_control)"
       baud_checkset="$(arg xarm_baud_checkset)"
       default_gripper_baud="$(arg xarm_default_gripper_baud)"/>
+    <!-- Wrist D435 + PETG plate on the flange link. Physically the plate is
+         clamped between flange and gripper, so it exists only with the gripper. -->
+    <xacro:if value="$(arg add_gripper)">
+      <xacro:ranger_wrist_d435 flange_link="$(arg xarm_prefix)link_eef" roll="${wrist_d435_roll_nom if '$(arg wrist_d435_roll)' == '' else float('$(arg wrist_d435_roll)')}"/>
+    </xacro:if>
   </xacro:if>
 
   <xacro:if value="$(arg gz_sensors)">
-    <xacro:ranger_gazebo_sensors/>
+    <!-- The wrist links exist only with the xArm and its gripper. -->
+    <xacro:ranger_gazebo_sensors
+      wrist_d435="${'$(arg use_xarm)'.lower() == 'true' and '$(arg add_gripper)'.lower() == 'true'}"/>
   </xacro:if>
 
 </robot>

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:macro name="ranger_sensor_frames" params="parent:='base_link' rplidar_x rplidar_y rplidar_z os0_x os0_y os0_z d435_x d435_y d435_z show_sensor_collision:=true">
+  <xacro:macro name="ranger_sensor_frames" params="parent:='base_link' rplidar_x rplidar_y rplidar_z os0_x os0_y os0_z gantry_d455_x gantry_d455_y gantry_d455_z show_sensor_collision:=true">
     <link name="laser_frame"/>
     <joint name="base_to_laser_frame" type="fixed">
       <parent link="${parent}"/><child link="laser_frame"/>
@@ -25,20 +25,89 @@
       <origin xyz="0 0 0" rpy="${-pi/2} ${-pi/2} 0"/>
     </joint>
 
-    <link name="d435_mount_link">
+    <!-- Camera pattern (both RealSense units):
+           <name>_mount_link  CAD part frame of the camera body; the mesh is drawn in it
+                              (X across the width, Y = camera top, Z = viewing direction).
+           <name>_link        semantic RealSense camera_link (X forward, Y left, Z up),
+                              a fixed permutation of the mount frame.
+         robot_state_publisher owns both. The realsense2_camera driver is started with
+         base_frame_id=link, so it owns only the optical/sensor frames below <name>_link.
+         Physical PETG parts carry other names (*_plate_link, custom_structure_link):
+         a *_mount_link is always a camera. -->
+
+    <!-- Gantry RealSense D455, lens toward robot +X (operator fact). The mesh is
+         realsense2_description's d455.stl (Apache-2.0), whose frame matches the
+         CAD part frame of D455_camera:1 to within 0.1 mm: front glass at z = 0,
+         body z in [-26, 0] mm, 124 x 29 mm face. Mass: 116 g nominal
+         (D400 datasheet rev 021, Table 3-53). -->
+    <link name="gantry_d455_mount_link">
+      <inertial>
+        <origin xyz="0 0 -0.013" rpy="0 0 0"/>
+        <mass value="0.116"/>
+        <inertia ixx="1.4664e-05" ixy="0" ixz="0" iyy="1.5517e-04" iyz="0" izz="1.5676e-04"/>
+      </inertial>
+      <visual><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/realsense_d455.stl" scale="0.001 0.001 0.001"/></geometry><material name="d455_material"><color rgba="0.18 0.18 0.18 1"/></material></visual>
+      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0 0 -0.013"/><geometry><box size="0.124 0.029 0.026"/></geometry></collision></xacro:if>
+    </link>
+    <joint name="base_to_gantry_d455_mount" type="fixed"><parent link="${parent}"/><child link="gantry_d455_mount_link"/><origin xyz="${gantry_d455_x} ${gantry_d455_y} ${gantry_d455_z}" rpy="${pi/2} 0 ${pi/2}"/></joint>
+    <link name="gantry_d455_link"/>
+    <joint name="gantry_d455_mount_to_link" type="fixed">
+      <parent link="gantry_d455_mount_link"/><child link="gantry_d455_link"/>
+      <origin xyz="0 0 0" rpy="${-pi/2} ${-pi/2} 0"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- Wrist RealSense D435 (a different unit from the old gantry D435) on a PETG
+       wrist plate between the xArm flange and the gripper. The gripper comes from
+       the upstream xarm_device macro, so the plate and camera are fixed children
+       of the flange link (siblings of the gripper root, whose joint is identity).
+       The plate adds no spacer: flange->gripper and flange->TCP are unchanged.
+       Everything here rotates rigidly with joint 6.
+
+         wrist_d435_plate_link  plate CAD frame (camera_:1). Origin = centre of the
+                                flange/gripper interface; +Z points back into the arm,
+                                +Y toward the camera side. No inertial: PETG mass unknown.
+         wrist_d435_mount_link  D435 CAD part frame (lens +Z out along the tool axis,
+                                +Y = camera top = away from the gripper).
+         wrist_d435_link        semantic camera_link (X along the tool axis). -->
+  <xacro:macro name="ranger_wrist_d435" params="flange_link roll show_sensor_collision:=true">
+    <link name="wrist_d435_plate_link">
+      <!-- Visual: exact mesh of the plate, tessellated from the project's private CAD
+           (closed, manifold, holes included), in mm in this link's frame (= plate CAD frame).
+           Drawn 0.1 mm along +z (into the arm): the upstream flange's top face is a
+           36.5 mm-radius disc at the interface plane, larger than the plate's 31.5 mm
+           opening, so without the offset the ring between them z-fights. The mesh file
+           itself stays exact; this is a display offset only.
+           Collision: the plate envelope from CAD, 80 (x) x 125 (y, -40..+85 mm) x 5.5 (z, 0..5.5 mm behind the interface). -->
+      <visual><origin xyz="0 0 0.0001"/><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/wrist_d435_plate.stl" scale="0.001 0.001 0.001"/></geometry><material name="petg_material"><color rgba="0.85 0.45 0.10 1"/></material></visual>
+      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0 0.0225 0.00275"/><geometry><box size="0.080 0.125 0.0055"/></geometry></collision></xacro:if>
+    </link>
+    <joint name="flange_to_wrist_d435_plate" type="fixed">
+      <parent link="${flange_link}"/><child link="wrist_d435_plate_link"/>
+      <!-- T_flange_plate = T_flange_gripperRoot (identity, upstream) * T_gripperRoot_gripperCAD(roll)
+           * T_gripperCAD_plateCAD; see calibration.xacro for the derivation. -->
+      <origin xyz="0 0 ${gripper_cad_z + plate_in_gripper_cad_y}" rpy="${pi} 0 ${pi/2 + roll}"/>
+    </joint>
+
+    <!-- Same CAD mesh and collision box as the old gantry D435: the mesh frame is
+         the D435 CAD part frame, back face at z = -25.05 mm, matching the plate
+         offset. Mass: 75 g nominal (D400 datasheet rev 021, Table 3-52). -->
+    <link name="wrist_d435_mount_link">
+      <inertial>
+        <origin xyz="-0.000273 -0.000167 -0.012227" rpy="0 0 0"/>
+        <mass value="0.075"/>
+        <inertia ixx="8.45e-06" ixy="0" ixz="0" iyy="5.7125e-05" iyz="0" izz="5.7125e-05"/>
+      </inertial>
       <visual><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/realsense_d435_cad.stl" scale="0.001 0.001 0.001"/></geometry><material name="d435_material"><color rgba="0.18 0.18 0.18 1"/></material></visual>
       <xacro:if value="${show_sensor_collision}"><collision><origin xyz="-0.000273 -0.000167 -0.012227"/><geometry><box size="0.092 0.026 0.026"/></geometry></collision></xacro:if>
     </link>
-    <joint name="base_to_d435_mount" type="fixed"><parent link="${parent}"/><child link="d435_mount_link"/><origin xyz="${d435_x} ${d435_y} ${d435_z}" rpy="${pi/2} 0 ${pi/2}"/></joint>
-
-    <!-- Separate the physical CAD occurrence frame from the ROS camera semantic frame.
-         The D435 CAD mesh local axes are: X across camera width, Y up/down, Z viewing depth.
-         RealSense/REP-103 camera_link semantics are: X forward, Y left, Z up.
-         With the existing CAD occurrence rotation, this fixed permutation makes d435_link
-         globally aligned with base_link while leaving the mesh placement unchanged. -->
-    <link name="d435_link"/>
-    <joint name="d435_mount_to_link" type="fixed">
-      <parent link="d435_mount_link"/><child link="d435_link"/>
+    <joint name="wrist_d435_plate_to_mount" type="fixed">
+      <parent link="wrist_d435_plate_link"/><child link="wrist_d435_mount_link"/>
+      <origin xyz="${wrist_d435_in_plate_xyz}" rpy="${wrist_d435_in_plate_rpy}"/>
+    </joint>
+    <link name="wrist_d435_link"/>
+    <joint name="wrist_d435_mount_to_link" type="fixed">
+      <parent link="wrist_d435_mount_link"/><child link="wrist_d435_link"/>
       <origin xyz="0 0 0" rpy="${-pi/2} ${-pi/2} 0"/>
     </joint>
   </xacro:macro>

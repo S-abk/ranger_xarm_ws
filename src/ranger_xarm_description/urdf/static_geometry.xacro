@@ -88,6 +88,17 @@
         </geometry>
         <material name="custom_structure_material"><color rgba="0.34 0.34 0.34 1"/></material>
       </visual>
+      <!-- 140 mm PETG gantry camera/Ouster support (Cam_3d_lidar_mount_2,
+           2026-10-30 CAD): exact mesh tessellated from the project's private
+           CAD (linear deflection 0.05 mm), holes included, closed and
+           manifold, in mm in this link's (= base_link) frame. The old 110 mm
+           bracket was removed from custom_structure_cad.stl so the two do not
+           share faces. Visual only; the collision below stays the
+           conservative solid box. See the package README (Meshes). -->
+      <visual name="gantry_support_140_visual">
+        <geometry><mesh filename="package://ranger_xarm_description/meshes/visual/gantry_support_140.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="petg_material"><color rgba="0.85 0.45 0.10 1"/></material>
+      </visual>
       <xacro:if value="${use_collision}">
         <collision name="sensor_mount_collision"><origin xyz="0.265 0 0.015"/><geometry><box size="0.125 0.270 0.024"/></geometry></collision>
         <collision name="ac_control_box_collision"><origin xyz="-0.266466 -0.000618 0.293431"/><geometry><box size="0.128615 0.307250 0.143363"/></geometry></collision>
@@ -99,7 +110,9 @@
         <collision name="gantry_left_upright_collision"><origin xyz="-0.395 0.220001 0.573525"/><geometry><box size="0.080 0.040001 1.100"/></geometry></collision>
         <collision name="arm_mount_plate_collision"><origin xyz="0 0 0.384875"/><geometry><box size="0.2032 0.2032 0.0127"/></geometry></collision>
         <collision name="laptop_stand_collision"><origin xyz="-0.255915 0 0.306025"/><geometry><box size="0.351830 0.400 0.165"/></geometry></collision>
-        <collision name="camera_lidar_mount_collision"><origin xyz="-0.3375 0 1.086025"/><geometry><box size="0.035 0.110 0.075"/></geometry></collision>
+        <!-- PETG gantry camera/Ouster support, widened from 110 to 140 mm for the
+             D455 (Cam_3d_lidar_mount_2:1, 2026-10-30 CAD). Only y changed. -->
+        <collision name="camera_lidar_mount_collision"><origin xyz="-0.3375 0 1.086025"/><geometry><box size="0.035 0.140 0.075"/></geometry></collision>
       </xacro:if>
     </link>
     <joint name="base_to_custom_structure" type="fixed">

@@ -16,9 +16,45 @@
   <xacro:property name="os0_y_nom" value="0.0"/>
   <xacro:property name="os0_z_nom" value="1.146025000"/>
 
-  <xacro:property name="d435_x_nom" value="-0.319950008"/>
-  <xacro:property name="d435_y_nom" value="0.0"/>
-  <xacro:property name="d435_z_nom" value="1.061025000"/>
+  <!-- Gantry RealSense D455: CAD part origin of D455_camera:1 in the
+       2026-10-30 export (cad_evidence_v3 .components_new_export.gantry_d455_body).
+       Its CAD part rotation equals the old D435's, so the joint keeps
+       rpy=(pi/2, 0, pi/2). The old D435 sat at (-0.319950008, 0, 1.061025). -->
+  <xacro:property name="gantry_d455_x_nom" value="-0.319000008"/>
+  <xacro:property name="gantry_d455_y_nom" value="0.0"/>
+  <xacro:property name="gantry_d455_z_nom" value="1.063025000"/>
+
+  <!-- Wrist RealSense D435 on the PETG wrist plate (cad_evidence_v3 .wrist_relative_cad).
+       All three transforms are CAD component frames, mm converted to m.
+
+       T_gripperRoot_gripperCAD is the one transform not given by CAD. From the
+       upstream gripper mesh (xarm/base_link.stl, drawn in the gripper root
+       frame): the tool axis is root +Z, the 75 mm body extent is root X and the
+       finger axis is root Y. In CAD the 75 mm extent is gripperCAD Z (the
+       camera side) and the tool axis is gripperCAD +Y. So gripperCAD Z lies
+       along root +X or -X: a 180 deg roll about the tool axis that geometry
+       cannot resolve. The origin is 41.498179 mm along the tool axis from
+       the flange/gripper interface (root z = 0), which puts the plate origin
+       exactly at the interface centre, as the CAD has it.
+
+       wrist_d435_roll_nom = 0 (candidate A: camera side = gripper root +X).
+       Confirmed by SAO on 2026-11-10 by visual inspection. The live
+       point-cloud check is still to come. The xacro arg wrist_d435_roll
+       overrides it for later recalibration. -->
+  <xacro:property name="wrist_d435_roll_nom" value="0.0"/>
+  <!-- T_gripperRoot_gripperCAD at roll 0: R columns (gripperCAD x, y, z in
+       root axes) = (0,1,0), (0,0,1), (1,0,0); t = (0, 0, 0.041498179).
+       T_gripperCAD_plateCAD: R = [[1,0,0],[0,0,-1],[0,1,0]]; t = (0, -41.498179, 0) mm.
+       Composed in sensor_frames.xacro (wrist_d435 macro) as
+         T_root_plate = Rz(roll) * T_root_gripperCAD * T_gripperCAD_plateCAD
+                      : R = Rz(roll) * [[0,1,0],[1,0,0],[0,0,-1]]  -> rpy (pi, 0, pi/2 + roll)
+                        t = Rz(roll) * (0, 0, gripper_cad_z + plate_in_gripper_cad_y) = (0, 0, 0)
+       Both candidates were checked numerically against the CAD composition. -->
+  <xacro:property name="gripper_cad_z" value="0.041498179"/>
+  <xacro:property name="plate_in_gripper_cad_y" value="-0.041498179"/>
+  <!-- T_plateCAD_D435partCAD: R = diag(-1, 1, -1) = rpy (0, pi, 0); t = (0, 75.0, -25.05) mm. -->
+  <xacro:property name="wrist_d435_in_plate_xyz" value="0 0.075 -0.02505"/>
+  <xacro:property name="wrist_d435_in_plate_rpy" value="0 ${pi} 0"/>
 
   <xacro:property name="laptop_mount_x_nom" value="-0.295278"/>
   <xacro:property name="laptop_mount_y_nom" value="0.0"/>

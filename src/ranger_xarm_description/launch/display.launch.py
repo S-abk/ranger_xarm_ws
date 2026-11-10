@@ -12,6 +12,7 @@ def generate_launch_description():
     use_static_collision = LaunchConfiguration('use_static_collision')
     xarm_mount_yaw = LaunchConfiguration('xarm_mount_yaw')
     use_laptop_collision = LaunchConfiguration('use_laptop_collision')
+    wrist_d435_roll = LaunchConfiguration('wrist_d435_roll')
 
     xacro_file = PathJoinSubstitution([FindPackageShare('ranger_xarm_description'), 'urdf', 'ranger_xarm.urdf.xacro'])
     robot_description_content = Command([
@@ -21,6 +22,7 @@ def generate_launch_description():
         ' use_static_collision:=', use_static_collision,
         ' xarm_mount_yaw:=', xarm_mount_yaw,
         ' use_laptop_collision:=', use_laptop_collision,
+        ' wrist_d435_roll:=', wrist_d435_roll,
     ])
     robot_description = {'robot_description': ParameterValue(robot_description_content, value_type=str)}
 
@@ -30,6 +32,13 @@ def generate_launch_description():
         DeclareLaunchArgument('use_static_collision', default_value='true'),
         DeclareLaunchArgument('xarm_mount_yaw', default_value='0.0'),
         DeclareLaunchArgument('use_laptop_collision', default_value='true'),
+        # Wrist camera roll about the tool axis. Empty = the model's
+        # wrist_d435_roll_nom (calibration.xacro; 0.0 = A, confirmed), so RViz
+        # always shows what MoveIt and the sims use. Override only for
+        # recalibration: 0.0 = A (camera on the gripper root's +X side),
+        # 3.141592653589793 = B.
+        DeclareLaunchArgument('wrist_d435_roll', default_value='',
+                              description='Wrist D435 roll override: empty = wrist_d435_roll_nom; 0.0 (A) or 3.141592653589793 (B).'),
         Node(package='robot_state_publisher', executable='robot_state_publisher', output='screen', parameters=[robot_description]),
         Node(package='joint_state_publisher_gui', executable='joint_state_publisher_gui', output='screen'),
         Node(package='rviz2', executable='rviz2', output='screen'),

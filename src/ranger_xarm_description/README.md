@@ -6,7 +6,7 @@ ROS 2 Jazzy description for the Ranger Mini V3 + xArm6 assembly, generated from 
 
 - Full Ranger Mini CAD visual mesh.
 - Full custom static structure visual mesh: pedestal, mounting plate, 8020 gantry, control/battery hardware, laptop stand, and sensor mounts.
-- Actual CAD visual meshes for RPLIDAR A1, Ouster OS0 and RealSense D435.
+- Actual CAD visual meshes for RPLIDAR A1, Ouster OS0 and the RealSense D435 (wrist), plus the vendor RealSense D455 mesh (gantry).
 - Conservative primitive collision boxes separate from high-detail visuals.
 - Corrected xArm mounting height: `z = 0.391225 m`.
 - Confirmed 180-degree laptop yaw correction.
@@ -46,6 +46,27 @@ ros2 launch ranger_xarm_description display.launch.py use_xarm:=true use_static_
 ```
 
 To inspect collision geometry, enable `Collision Enabled` under RobotModel in RViz.
+
+## Cameras
+
+Two RealSense units, each with the same frame pattern:
+
+| camera_name | body | parent | `<name>_mount_link` | `<name>_link` |
+|---|---|---|---|---|
+| `gantry_d455` | D455, lens toward robot +X | `base_link` | CAD part frame of `D455_camera:1` at (-0.319000008, 0, 1.063025), rpy (pi/2, 0, pi/2) | REP-103 camera_link (X forward, Z up) |
+| `wrist_d435` | standard D435 | `wrist_d435_plate_link` on `xarm_link_eef` | CAD part frame of the D435, 25.05 mm out along the tool axis and 75 mm off-axis | camera_link, X along the tool axis |
+
+- `<name>_mount_link` is the CAD part frame and the mesh is drawn in it. `<name>_link` is a fixed permutation of it. robot_state_publisher owns both; the RealSense driver (`base_frame_id=link`) owns only the frames below `<name>_link`. See `ranger_xarm_sensors`.
+- Printed parts never use `*_mount_link` names. The 140 mm PETG gantry support is part of `custom_structure_link` (`camera_lidar_mount_collision`, a conservative solid box, plus the exact visual mesh `gantry_support_140.stl`). The old 110 mm bracket has been removed from `custom_structure_cad.stl`. The wrist plate is `wrist_d435_plate_link` (exact visual mesh `wrist_d435_plate.stl`, collision = its 80 x 125 x 5.5 mm envelope).
+- The wrist plate and camera are fixed children of the flange link, siblings of the upstream gripper. The plate adds no spacer, so flange->gripper and flange->TCP are unchanged, and everything rotates rigidly with joint 6.
+- **Wrist roll (confirmed: A).** The CAD fixes the wrist geometry up to a 180 deg roll about the tool axis relative to the gripper root. `wrist_d435_roll_nom` in `calibration.xacro` is `0.0` (candidate A: camera on the gripper root's +X side), confirmed by SAO on 2026-11-10 by visual inspection. The live point-cloud check is still to come. The xacro arg `wrist_d435_roll` stays as an override for later recalibration (`0.0` = A, `3.141592653589793` = B, the -X side; empty = `wrist_d435_roll_nom`); `display.launch.py` passes it through.
+- Masses: D455 0.116 kg and D435 0.075 kg nominal (D400 datasheet rev 021). The PETG parts, fasteners and cable carry no inertial because their mass is unknown. The xArm payload settings were not changed.
+
+## Mesh sources and licences
+
+- `realsense_d455.stl`: copied unchanged from `realsense2_description` (`meshes/d455.stl`, ROS 2 Jazzy package, Apache License 2.0, Intel/RealSense). Its frame matches the CAD part frame of the D455 to within 0.1 mm.
+- `gantry_support_140.stl` and `wrist_d435_plate.stl` are the project's own PETG camera mounts, tessellated from the project's private CAD (OpenCASCADE BRepMesh, linear deflection 0.05 mm). They are **exact and print-ready**: holes included, each a single closed, manifold solid with outward normals and no open edges. They are in millimetres and positioned in their link frames (`custom_structure_link` = `base_link` for the support, the plate's CAD part frame for the plate), not on a print bed, so re-orient them in the slicer. They are licensed under **CC-BY 4.0** (full text in [`LICENSE-CC-BY-4.0`](LICENSE-CC-BY-4.0)), attribution: Shuaib Olanrewaju (an exception to this package's BSD-3-Clause; see Licensing in the top-level README). The plate's visual is drawn 0.1 mm along its +z (into the arm) so it does not z-fight with the flange's top face; the STL itself is not offset. The CAD itself is not in the repo.
+- All other meshes are exported from the project CAD.
 
 ## Mesh units
 
