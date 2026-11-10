@@ -1,5 +1,12 @@
 # ranger_xarm_ws
 
+> **Legacy line: the gantry-D435 configuration.** This branch,
+> `legacy/gantry-d435`, is the robot with a single RealSense D435 on the
+> 110 mm gantry support. It is maintained for fixes only. Current development
+> is on `main`, which targets a gantry D455 on the 140 mm support and a wrist
+> D435 on a PETG plate (see `docs/MIGRATION.md` there). The tag
+> `legacy-gantry-d435` marks the exact last commit before `main` moved.
+
 ROS 2 Jazzy workspace for a **Ranger Mini V3 omnidirectional base + UFACTORY
 xArm 6** mobile manipulator, with an Ouster OS0 lidar, an Intel RealSense D435
 and an RPLIDAR A1 on a sensor gantry.
