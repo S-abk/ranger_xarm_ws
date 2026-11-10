@@ -123,6 +123,30 @@ ros2 launch ranger_xarm_moveit_config planning_demo.launch.py   # plan only
 ros2 launch ranger_xarm_moveit_config fake_execution.launch.py  # mock execution
 ```
 
+## Licensing
+
+Each package carries its own licence in its `package.xml`:
+
+| Package | Licence |
+| --- | --- |
+| `ranger_xarm_description` | BSD-3-Clause (except the meshes listed below) |
+| `ranger_xarm_moveit_config` | BSD-3-Clause |
+| `ranger_xarm_bringup` | BSD-3-Clause |
+| `ranger_xarm_sensors` | BSD-3-Clause |
+| `ranger_xarm_gazebo` | Apache-2.0 |
+| `ranger_xarm_isaac` | Apache-2.0 |
+
+Meshes with their own licence, in `src/ranger_xarm_description/meshes/visual/`:
+
+- `gantry_support_140.stl` and `wrist_d435_plate.stl`, the printable camera
+  mounts: [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit
+  the ranger_xarm_ws project when you share or adapt them.
+- `realsense_d455.stl`: Apache-2.0, copied unchanged from Intel RealSense's
+  `realsense2_description` (`meshes/d455.stl`).
+
+Upstream sources pulled by `vcs import` (`ranger_xarm.repos`) keep their own
+licences.
+
 ## Packages
 
 | Package | What it is | Needs hardware drivers |
