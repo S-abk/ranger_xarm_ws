@@ -10,9 +10,16 @@ for hardware too, and there is no second description to drift.
     ros2 launch ranger_xarm_gazebo sim.launch.py headless:=true
     ros2 launch ranger_xarm_gazebo sim.launch.py world:=/abs/path/to/your.sdf
 
-This brings up joint control only. It does not start MoveIt: pair it with
-ranger_xarm_moveit_config's planning launch once the controllers are up, so
-the two can be debugged separately.
+This brings up joint control only. It does not start MoveIt: once the
+controllers are up, start move_group separately, so the two can be debugged
+separately:
+
+    ros2 launch ranger_xarm_isaac moveit.launch.py
+
+That launch is not Isaac-specific. It starts move_group only, on sim time,
+with the xarm_-prefixed controller map this simulation also uses.
+ranger_xarm_moveit_config's planning_demo.launch.py is not a partner for
+this: it runs on wall time with execution disabled.
 """
 import os
 

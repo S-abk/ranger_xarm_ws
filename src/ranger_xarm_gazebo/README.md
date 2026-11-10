@@ -240,7 +240,17 @@ verdict has been reached.
 It does not start MoveIt. Bring the simulation up first, confirm the
 controllers are active, then launch planning separately — when they start
 together, a controller that failed to spawn looks exactly like a planning
-failure.
+failure:
+
+```bash
+ros2 launch ranger_xarm_isaac moveit.launch.py start_rviz:=true
+```
+
+Despite the package, nothing in that launch is Isaac-specific: it starts
+`move_group` only, on sim time, with the `xarm_`-prefixed controller map
+that this simulation's controllers also use. `ranger_xarm_moveit_config`'s
+`planning_demo.launch.py` is not a partner for a simulator: it runs on wall
+time with trajectory execution disabled.
 
 It does not give you real perception. `sensors:=true` simulates the Ouster,
 the D455, the D435 and the RPLIDAR (see below), but the returns are ideal geometry.

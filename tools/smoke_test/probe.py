@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check a running simulation of the robot, whichever simulator it is.
 
-    probe.py [--drive] [--sensors] [--arm]
+    probe.py [--drive] [--sensors] [--arm] [--moveit]
 
 Always: /joint_states arrives and /clock advances. --sensors: the Ouster
 cloud and IMU, the RPLIDAR scan and the colour images of BOTH cameras
@@ -11,6 +11,9 @@ the gripper plate (the wrist camera is mounted on it).
 --drive: forward, crab and spin-in-place commands on /cmd_vel each move the
 base along the commanded axis, measured by /ground_truth/odom, and /odom is
 reported beside it. --arm: the arm's trajectory controller reaches a pose.
+--moveit: move_group (ranger_xarm_isaac moveit.launch.py) plans and executes
+one joint goal and one pose goal for xarm6 through the MoveGroup action, so
+the collision model, SRDF and controller map are exercised end to end.
 
 Prints one PASS/FAIL line per check; exits 0 only if every check passed.
 The thresholds are for "the bringup works", not for tracking accuracy: at
@@ -41,6 +44,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--drive', action='store_true')
 ap.add_argument('--sensors', action='store_true')
 ap.add_argument('--arm', action='store_true')
+ap.add_argument('--moveit', action='store_true')
 ap.add_argument('--no-wrist-camera', action='store_true',
                 help='model has no gripper plate, so no wrist D435')
 ap.add_argument('--arm-controller', default='/xarm_xarm6_traj_controller')
@@ -240,6 +244,134 @@ if args.arm:
         check('arm to joint2 -35 deg', code == 0 and j2 is not None and abs(j2 + 35) < 2,
               f"result {code}, joint2 {j2:.1f} deg" if j2 is not None else f"result {code}, no xarm_joint2")
         move_arm(client, [0, 0, 0, 0, 0, 0])
+
+# --- moveit
+MOVEIT_JOINT_DEG = [20, -10, -40, 0, 50, 30]   # clear of the gantry, the deck and the camera's reach
+MOVEIT_POSE_DEG = [-25, 20, -60, 0, 40, -20]    # its TCP pose becomes the pose goal
+
+
+def moveit_goal(action, constraints):
+    """Plan and execute through MoveGroup.
+
+    Returns (MoveItErrorCodes value or text, planned point count, the plan's last arm point)."""
+    goal = MoveGroup.Goal()
+    req = goal.request
+    req.group_name = 'xarm6'
+    req.num_planning_attempts = 3
+    req.allowed_planning_time = 10.0
+    req.max_velocity_scaling_factor = req.max_acceleration_scaling_factor = 0.3
+    req.start_state.is_diff = True
+    req.goal_constraints = [constraints]
+    goal.planning_options.plan_only = False
+    fut = action.send_goal_async(goal)
+    rclpy.spin_until_future_complete(node, fut, timeout_sec=10.0)
+    handle = fut.result()
+    if handle is None or not handle.accepted:
+        return 'goal not accepted', 0, None
+    res = handle.get_result_async()
+    rclpy.spin_until_future_complete(node, res, timeout_sec=120.0)
+    if res.result() is None:
+        return 'no result in 120 s', 0, None
+    r = res.result().result
+    jt = r.planned_trajectory.joint_trajectory
+    end = None
+    if jt.points and all(f'xarm_joint{i}' in jt.joint_names for i in range(1, 7)):
+        end = [jt.points[-1].positions[jt.joint_names.index(f'xarm_joint{i}')] for i in range(1, 7)]
+    return r.error_code.val, len(jt.points), end
+
+
+def joint_constraints(degrees):
+    c = Constraints()
+    for i, d in enumerate(degrees):
+        jc = JointConstraint()
+        jc.joint_name, jc.position = f'xarm_joint{i + 1}', math.radians(d)
+        jc.tolerance_above = jc.tolerance_below = 0.001
+        jc.weight = 1.0
+        c.joint_constraints.append(jc)
+    return c
+
+
+def tcp_pose(fk, positions):
+    """TCP pose in move_group's model frame (returned as a PoseStamped).
+
+    The header is left empty on purpose: any other frame makes /compute_fk
+    convert through live TF, and once the base has driven that includes
+    odometry, so the pose no longer matches what a constraint in a robot
+    link frame means to the planner."""
+    req = GetPositionFK.Request()
+    req.fk_link_names = ['xarm_link_tcp']
+    req.robot_state.is_diff = True
+    req.robot_state.joint_state.name = [f'xarm_joint{i}' for i in range(1, 7)]
+    req.robot_state.joint_state.position = [float(p) for p in positions]
+    fut = fk.call_async(req)
+    rclpy.spin_until_future_complete(node, fut, timeout_sec=10.0)
+    r = fut.result()
+    return r.pose_stamped[0] if r is not None and r.pose_stamped else None
+
+
+def pose_constraints(stamped):
+    pose, frame = stamped.pose, stamped.header.frame_id
+    c = Constraints()
+    pc = PositionConstraint()
+    pc.header.frame_id, pc.link_name, pc.weight = frame, 'xarm_link_tcp', 1.0
+    sphere = SolidPrimitive()
+    sphere.type, sphere.dimensions = SolidPrimitive.SPHERE, [0.005]
+    centre = Pose()
+    centre.position = pose.position
+    centre.orientation.w = 1.0
+    pc.constraint_region.primitives.append(sphere)
+    pc.constraint_region.primitive_poses.append(centre)
+    oc = OrientationConstraint()
+    oc.header.frame_id, oc.link_name, oc.weight = frame, 'xarm_link_tcp', 1.0
+    oc.orientation = pose.orientation
+    oc.absolute_x_axis_tolerance = oc.absolute_y_axis_tolerance = oc.absolute_z_axis_tolerance = 0.02
+    c.position_constraints.append(pc)
+    c.orientation_constraints.append(oc)
+    return c
+
+
+def arm_now():
+    # Settle on sim time, not wall time: at a real-time factor of 0.2 a wall
+    # second is a fifth of a simulated one.
+    spin_sim(SETTLE_SIM_SEC)
+    js = last['js']
+    return [js.position[js.name.index(f'xarm_joint{i}')] for i in range(1, 7)]
+
+
+if args.moveit:
+    from geometry_msgs.msg import Pose
+    from moveit_msgs.action import MoveGroup
+    from moveit_msgs.msg import (Constraints, JointConstraint, MoveItErrorCodes,
+                                 OrientationConstraint, PositionConstraint)
+    from moveit_msgs.srv import GetPositionFK
+    from shape_msgs.msg import SolidPrimitive
+
+    action = ActionClient(node, MoveGroup, '/move_action')
+    fk = node.create_client(GetPositionFK, '/compute_fk')
+    if not action.wait_for_server(timeout_sec=60.0) or not fk.wait_for_service(timeout_sec=10.0):
+        check('MoveIt joint goal', False, 'no move_group (/move_action, /compute_fk)')
+        check('MoveIt pose goal', False, 'no move_group')
+    else:
+        code, n, _ = moveit_goal(action, joint_constraints(MOVEIT_JOINT_DEG))
+        q = arm_now()
+        err = max(abs(math.degrees(a) - d) for a, d in zip(q, MOVEIT_JOINT_DEG))
+        check('MoveIt joint goal', code == MoveItErrorCodes.SUCCESS and err < 2.0,
+              f'result {code}, {n} points, worst joint {err:.2f} deg off')
+
+        target = tcp_pose(fk, [math.radians(d) for d in MOVEIT_POSE_DEG])
+        if target is None:
+            check('MoveIt pose goal', False, '/compute_fk gave no pose')
+        else:
+            code, n, end = moveit_goal(action, pose_constraints(target))
+            q = arm_now()
+            got = tcp_pose(fk, q)
+            off = 1000 * math.dist((got.pose.position.x, got.pose.position.y, got.pose.position.z),
+                                   (target.pose.position.x, target.pose.position.y, target.pose.position.z)) if got else float('inf')
+            jerr = (f', worst joint {max(abs(math.degrees(a - b)) for a, b in zip(q, end)):.2f} deg from the plan'
+                    if end else '')
+            check('MoveIt pose goal', code == MoveItErrorCodes.SUCCESS and off < 10.0,
+                  f'result {code}, {n} points, TCP {off:.1f} mm from target{jerr}')
+        moveit_goal(action, joint_constraints([0, 0, 0, 0, 0, 0]))
 
 node.destroy_node()
 rclpy.shutdown()
