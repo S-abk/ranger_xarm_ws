@@ -28,4 +28,6 @@ xarm6:
     - RRTstarkConfigDefault
     - PRMkConfigDefault
   projection_evaluator: joints(xarm_joint1,xarm_joint2)
-  longest_valid_segment_fraction: 0.005
+  # Motion-validation step as a fraction of the state-space extent (0.005 -> 0.002):
+  # fewer paths that pass OMPL but fail ValidateSolution near the gantry, ~1.7x planning time.
+  longest_valid_segment_fraction: 0.002
