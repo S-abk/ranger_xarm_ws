@@ -326,7 +326,9 @@ than at planning time.
   driving the robot, simulated or real. `colcon test` will report nothing
   meaningful. `tools/smoke_test/` automates the simulated part: it brings the
   robot up, drives it, moves the arm and checks the sensors, in about two
-  minutes.
+  minutes. `tools/moveit_test/` runs a fixed set of MoveIt goals, including
+  some close to the gantry, and checks every planned path against the true
+  collision model.
 - Custom packages use `ament_cmake` with Python scripts installed via
   `install(PROGRAMS ...)`. **A new script must be added to `CMakeLists.txt` or
   it will not be installed to `lib/<pkg>/`** and the launch file will fail to
