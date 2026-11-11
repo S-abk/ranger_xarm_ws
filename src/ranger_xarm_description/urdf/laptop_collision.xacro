@@ -12,8 +12,8 @@
     <xacro:property name="screen_center_z" value="${float(base_thickness)+0.5*float(screen_height)*cos(screen_tilt)}"/>
 
     <link name="laptop_collision_link">
-      <collision name="laptop_base_collision"><origin xyz="0 0 ${float(base_thickness)/2.0}"/><geometry><box size="${d_col} ${w_col} ${bt_col}"/></geometry></collision>
-      <collision name="laptop_screen_collision"><origin xyz="${screen_center_x} 0 ${screen_center_z}" rpy="0 ${screen_tilt} 0"/><geometry><box size="${st_col} ${w_col} ${sh_col}"/></geometry></collision>
+      <collision name="laptop_base_collision"><origin xyz="0 0 ${float(base_thickness)/2.0}"/><geometry><xacro:structure_box size="${d_col} ${w_col} ${bt_col}"/></geometry></collision>
+      <collision name="laptop_screen_collision"><origin xyz="${screen_center_x} 0 ${screen_center_z}" rpy="0 ${screen_tilt} 0"/><geometry><xacro:structure_box size="${st_col} ${w_col} ${sh_col}"/></geometry></collision>
       <xacro:if value="${show_visual}">
         <visual name="laptop_base_visual"><origin xyz="0 0 ${float(base_thickness)/2.0}"/><geometry><box size="${float(depth)} ${float(width)} ${float(base_thickness)}"/></geometry><material name="generic_laptop"><color rgba="0.12 0.12 0.12 0.65"/></material></visual>
         <visual name="laptop_screen_visual"><origin xyz="${screen_center_x} 0 ${screen_center_z}" rpy="0 ${screen_tilt} 0"/><geometry><box size="${float(screen_thickness)} ${float(width)} ${float(screen_height)}"/></geometry><material name="generic_laptop_screen"><color rgba="0.08 0.08 0.08 0.65"/></material></visual>

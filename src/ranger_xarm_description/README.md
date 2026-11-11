@@ -8,6 +8,7 @@ ROS 2 Jazzy description for the Ranger Mini V3 + xArm6 assembly, generated from 
 - Full custom static structure visual mesh: pedestal, mounting plate, 8020 gantry, control/battery hardware, laptop stand, and sensor mounts.
 - Actual CAD visual meshes for RPLIDAR A1, Ouster OS0 and the RealSense D435 (wrist), plus the vendor RealSense D455 mesh (gantry).
 - Conservative primitive collision boxes separate from high-detail visuals.
+- `planning_margin` xacro argument (m, default 0): grows every fixed-structure collision box by that amount per side, for MoveIt only (`urdf/planning_margin.xacro`). At 0 the description is unchanged.
 - Corrected xArm mounting height: `z = 0.391225 m`.
 - Confirmed 180-degree laptop yaw correction.
 - Default-on 15-inch laptop collision envelope.

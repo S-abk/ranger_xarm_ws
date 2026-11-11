@@ -8,13 +8,13 @@
     </joint>
     <link name="rplidar_body_link">
       <visual><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/rplidar_a1_cad.stl" scale="0.001 0.001 0.001"/></geometry><material name="rplidar_material"><color rgba="0.22 0.22 0.22 1"/></material></visual>
-      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0.009556 0 -0.014480"/><geometry><box size="0.108 0.085 0.056"/></geometry></collision></xacro:if>
+      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0.009556 0 -0.014480"/><geometry><xacro:structure_box size="0.108 0.085 0.056"/></geometry></collision></xacro:if>
     </link>
     <joint name="laser_frame_to_rplidar_body" type="fixed"><parent link="laser_frame"/><child link="rplidar_body_link"/><origin xyz="0 0 0" rpy="0 0 0"/></joint>
 
     <link name="os0_mount_link">
       <visual><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/ouster_os0_cad.stl" scale="0.001 0.001 0.001"/></geometry><material name="os0_material"><color rgba="0.28 0.28 0.28 1"/></material></visual>
-      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0 0.0255 0"/><geometry><box size="0.120 0.106 0.120"/></geometry></collision></xacro:if>
+      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0 0.0255 0"/><geometry><xacro:structure_box size="0.120 0.106 0.120"/></geometry></collision></xacro:if>
     </link>
     <joint name="base_to_os0_mount" type="fixed"><parent link="${parent}"/><child link="os0_mount_link"/><origin xyz="${os0_x} ${os0_y} ${os0_z}" rpy="${pi/2} 0 ${pi/2}"/></joint>
 
@@ -47,7 +47,7 @@
         <inertia ixx="1.4664e-05" ixy="0" ixz="0" iyy="1.5517e-04" iyz="0" izz="1.5676e-04"/>
       </inertial>
       <visual><geometry><mesh filename="package://ranger_xarm_description/meshes/visual/realsense_d455.stl" scale="0.001 0.001 0.001"/></geometry><material name="d455_material"><color rgba="0.18 0.18 0.18 1"/></material></visual>
-      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0 0 -0.013"/><geometry><box size="0.124 0.029 0.026"/></geometry></collision></xacro:if>
+      <xacro:if value="${show_sensor_collision}"><collision><origin xyz="0 0 -0.013"/><geometry><xacro:structure_box size="0.124 0.029 0.026"/></geometry></collision></xacro:if>
     </link>
     <joint name="base_to_gantry_d455_mount" type="fixed"><parent link="${parent}"/><child link="gantry_d455_mount_link"/><origin xyz="${gantry_d455_x} ${gantry_d455_y} ${gantry_d455_z}" rpy="${pi/2} 0 ${pi/2}"/></joint>
     <link name="gantry_d455_link"/>
