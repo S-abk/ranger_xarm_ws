@@ -241,6 +241,8 @@ unchanged from `ranger_xarm_moveit_config`. It starts move_group ONLY:
 copies would put two publishers on `/robot_description` and two controller
 managers on the same joints.
 
+Its description differs from `control.launch.py`'s in one way only: `planning_margin` (default 5 mm) grows the fixed-structure collision boxes for planning. See the planning margin section in the `ranger_xarm_moveit_config` README.
+
 Only the controller map is local (`config/moveit_controllers_isaac.yaml`).
 The existing maps name the unprefixed `xarm6_traj_controller` that
 `fake_execution` spawns, and on hardware a `xarm_gripper` GripperCommand

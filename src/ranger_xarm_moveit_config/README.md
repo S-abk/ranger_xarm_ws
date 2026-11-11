@@ -58,6 +58,18 @@ ros2 param get /move_group robot_description_semantic
 
 To inspect whether MoveIt regards the initial state as colliding, the RViz MotionPlanning display's **Scene Robot / Show Robot Collision** option is useful.
 
+## Planning margin
+
+Every MoveIt launch here (and `ranger_xarm_isaac moveit.launch.py`) gives `move_group` a description in which each fixed-structure collision box is grown by `planning_margin` per side: the chassis envelope, every `custom_structure_link` box, the RPLIDAR, Ouster and gantry D455 boxes, and the laptop. The default is `planning_margin:=0.005` (5 mm). The arm, gripper, wrist plate, wrist camera and wheels are not inflated, and visuals never change.
+
+Why: MoveIt checks discrete states, so a planned path can graze the structure between checked states. In simulation, 2–5 % of planned paths near the gantry grazed by up to about 2 mm, and neither `longest_valid_segment_fraction` nor `totg.path_tolerance` removed this. `default_robot_padding` does not apply either: it pads robot-vs-world checks only, and the structure is part of this URDF.
+
+`robot_state_publisher`, ros2_control, Gazebo and Isaac keep the true geometry (`planning_margin` defaults to 0 in the xacro). For that reason `move_group` no longer publishes `/robot_description`; RViz in these launches is given the planning description, so the collision display matches what is planned against.
+
+```bash
+ros2 launch ranger_xarm_moveit_config planning_demo.launch.py planning_margin:=0.0   # true geometry
+```
+
 ## Laptop variations
 
 The default 15-inch laptop remains enabled. You can test another lid angle without editing the model:

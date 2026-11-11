@@ -54,13 +54,13 @@
         <xacro:if value="${wheels_modelled}">
           <collision name="ranger_envelope">
             <origin xyz="-0.001000 0 -0.116180" rpy="0 0 0"/>
-            <geometry><box size="0.803706 0.500020 0.270360"/></geometry>
+            <geometry><xacro:structure_box size="0.803706 0.500020 0.270360"/></geometry>
           </collision>
         </xacro:if>
         <xacro:unless value="${wheels_modelled}">
           <collision name="ranger_envelope">
             <origin xyz="-0.001000 0 -0.181436" rpy="0 0 0"/>
-            <geometry><box size="0.803706 0.500020 0.400891"/></geometry>
+            <geometry><xacro:structure_box size="0.803706 0.500020 0.400891"/></geometry>
           </collision>
         </xacro:unless>
       </xacro:if>
@@ -100,19 +100,19 @@
         <material name="petg_material"><color rgba="0.85 0.45 0.10 1"/></material>
       </visual>
       <xacro:if value="${use_collision}">
-        <collision name="sensor_mount_collision"><origin xyz="0.265 0 0.015"/><geometry><box size="0.125 0.270 0.024"/></geometry></collision>
-        <collision name="ac_control_box_collision"><origin xyz="-0.266466 -0.000618 0.293431"/><geometry><box size="0.128615 0.307250 0.143363"/></geometry></collision>
-        <collision name="arm_pedestal_collision"><origin xyz="0 0 0.198763"/><geometry><box size="0.292100 0.292100 0.359525"/></geometry></collision>
-        <collision name="ecoflow_collision"><origin xyz="-0.288706 0 0.126315"/><geometry><box size="0.259080 0.269240 0.195580"/></geometry></collision>
-        <collision name="power_mount_collision"><origin xyz="-0.295625 0 0.003636"/><geometry><box size="0.298750 0.509834 0.129273"/></geometry></collision>
-        <collision name="gantry_right_upright_collision"><origin xyz="-0.395 -0.220001 0.573525"/><geometry><box size="0.080 0.040001 1.100"/></geometry></collision>
-        <collision name="gantry_crossbar_collision"><origin xyz="-0.395 0 1.103524"/><geometry><box size="0.080 0.400 0.040001"/></geometry></collision>
-        <collision name="gantry_left_upright_collision"><origin xyz="-0.395 0.220001 0.573525"/><geometry><box size="0.080 0.040001 1.100"/></geometry></collision>
-        <collision name="arm_mount_plate_collision"><origin xyz="0 0 0.384875"/><geometry><box size="0.2032 0.2032 0.0127"/></geometry></collision>
-        <collision name="laptop_stand_collision"><origin xyz="-0.255915 0 0.306025"/><geometry><box size="0.351830 0.400 0.165"/></geometry></collision>
+        <collision name="sensor_mount_collision"><origin xyz="0.265 0 0.015"/><geometry><xacro:structure_box size="0.125 0.270 0.024"/></geometry></collision>
+        <collision name="ac_control_box_collision"><origin xyz="-0.266466 -0.000618 0.293431"/><geometry><xacro:structure_box size="0.128615 0.307250 0.143363"/></geometry></collision>
+        <collision name="arm_pedestal_collision"><origin xyz="0 0 0.198763"/><geometry><xacro:structure_box size="0.292100 0.292100 0.359525"/></geometry></collision>
+        <collision name="ecoflow_collision"><origin xyz="-0.288706 0 0.126315"/><geometry><xacro:structure_box size="0.259080 0.269240 0.195580"/></geometry></collision>
+        <collision name="power_mount_collision"><origin xyz="-0.295625 0 0.003636"/><geometry><xacro:structure_box size="0.298750 0.509834 0.129273"/></geometry></collision>
+        <collision name="gantry_right_upright_collision"><origin xyz="-0.395 -0.220001 0.573525"/><geometry><xacro:structure_box size="0.080 0.040001 1.100"/></geometry></collision>
+        <collision name="gantry_crossbar_collision"><origin xyz="-0.395 0 1.103524"/><geometry><xacro:structure_box size="0.080 0.400 0.040001"/></geometry></collision>
+        <collision name="gantry_left_upright_collision"><origin xyz="-0.395 0.220001 0.573525"/><geometry><xacro:structure_box size="0.080 0.040001 1.100"/></geometry></collision>
+        <collision name="arm_mount_plate_collision"><origin xyz="0 0 0.384875"/><geometry><xacro:structure_box size="0.2032 0.2032 0.0127"/></geometry></collision>
+        <collision name="laptop_stand_collision"><origin xyz="-0.255915 0 0.306025"/><geometry><xacro:structure_box size="0.351830 0.400 0.165"/></geometry></collision>
         <!-- PETG gantry camera/Ouster support, widened from 110 to 140 mm for the
              D455 (Cam_3d_lidar_mount_2:1, 2026-10-30 CAD). Only y changed. -->
-        <collision name="camera_lidar_mount_collision"><origin xyz="-0.3375 0 1.086025"/><geometry><box size="0.035 0.140 0.075"/></geometry></collision>
+        <collision name="camera_lidar_mount_collision"><origin xyz="-0.3375 0 1.086025"/><geometry><xacro:structure_box size="0.035 0.140 0.075"/></geometry></collision>
       </xacro:if>
     </link>
     <joint name="base_to_custom_structure" type="fixed">

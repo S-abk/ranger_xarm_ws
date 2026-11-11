@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!-- Planning margin: inflates every fixed-structure COLLISION box by planning_margin (m)
+     on each side, i.e. each box dimension grows by 2 * planning_margin about the same
+     centre. Visual geometry is never changed.
+
+     Why: MoveIt checks discrete states, so planned paths can graze obstacles between
+     checked states by up to ~1-2 mm (measured in simulation). robot padding does not help
+     here: MoveIt pads robot-vs-world checks only, and the chassis, gantry, sensor mounts
+     and laptop are links of this URDF (self-collision, unpadded). A few mm of margin on
+     the structure gives the planner real clearance instead.
+
+     Default 0: the description is byte-identical to the true geometry, and that is what
+     robot_state_publisher, ros2_control, Gazebo and Isaac physics use. The MoveIt
+     launches set it (planning_margin launch argument) for move_group's description only.
+
+     Applies to: ranger_cad_link (ranger_envelope), custom_structure_link (all boxes),
+     rplidar_body_link, os0_mount_link, gantry_d455_mount_link, laptop_collision_link.
+     Not to: wheels (they move), the arm, gripper, wrist plate or wrist camera. -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="planning_margin" default="0.0"/>
+  <!-- A negative margin would shrink obstacles; fail the expansion instead. -->
+  <xacro:property name="planning_margin"
+                  value="${float('$(arg planning_margin)') if float('$(arg planning_margin)') >= 0.0 else planning_margin_must_be_non_negative}"/>
+
+  <!-- <box size="x y z"/> grown by planning_margin per side. At 0 the size string is
+       emitted unchanged. -->
+  <xacro:macro name="structure_box" params="size">
+    <box size="${size if planning_margin == 0.0 else ' '.join(['%.9g' % (float(v) + 2.0 * planning_margin) for v in str(size).split()])}"/>
+  </xacro:macro>
+</robot>

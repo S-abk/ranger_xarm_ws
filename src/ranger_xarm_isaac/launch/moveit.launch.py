@@ -45,6 +45,7 @@ def _load_yaml(path):
 
 def launch_setup(context, *args, **kwargs):
     add_gripper = LaunchConfiguration('add_gripper').perform(context)
+    planning_margin = LaunchConfiguration('planning_margin').perform(context)
 
     moveit_pkg = Path(get_package_share_directory('ranger_xarm_moveit_config'))
     isaac_pkg = Path(get_package_share_directory('ranger_xarm_isaac'))
@@ -53,16 +54,22 @@ def launch_setup(context, *args, **kwargs):
         FindPackageShare('ranger_xarm_description'), 'urdf',
         'ranger_xarm.urdf.xacro'])
 
-    # Must match control.launch.py exactly. move_group builds its
-    # collision model from this, so a description that differs from the
-    # one the controllers are using plans against a robot that is not
-    # the one moving.
+    # Must match control.launch.py exactly, except for planning_margin.
+    # move_group builds its collision model from this, so a description
+    # whose links or joints differ from the one the controllers are using
+    # plans against a robot that is not the one moving. planning_margin
+    # only grows the fixed-structure collision boxes (planning_margin.xacro
+    # in ranger_xarm_description), so move_group keeps a few mm of
+    # clearance that the discrete collision checks cannot guarantee;
+    # robot_state_publisher, the controllers and the simulator keep the
+    # true geometry. move_group does not publish this description.
     robot_description = {
         'robot_description': ParameterValue(Command([
             'xacro ', xacro_file,
             ' xarm_ros2_control_plugin:=', PLUGIN,
             ' add_gripper:=', add_gripper,
             ' xarm_load_gazebo_plugin:=false',
+            ' planning_margin:=', planning_margin,
         ]), value_type=str)
     }
 
@@ -117,5 +124,9 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('add_gripper', default_value='true'),
         DeclareLaunchArgument('start_rviz', default_value='false'),
+        DeclareLaunchArgument(
+            'planning_margin', default_value='0.005',
+            description='Per-side inflation (m) of fixed-structure collision boxes in '
+                        "move_group's description only; 0 = true geometry."),
         OpaqueFunction(function=launch_setup),
     ])

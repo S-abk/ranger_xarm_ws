@@ -17,6 +17,7 @@ def _load_yaml(path):
 
 
 def generate_launch_description():
+    planning_margin = LaunchConfiguration('planning_margin')
     xarm_mount_yaw = LaunchConfiguration('xarm_mount_yaw')
     use_laptop_collision = LaunchConfiguration('use_laptop_collision')
     laptop_open_angle_deg = LaunchConfiguration('laptop_open_angle_deg')
@@ -27,7 +28,7 @@ def generate_launch_description():
         'ranger_xarm.urdf.xacro',
     ])
 
-    robot_description_content = Command([
+    description_cmd = [
         'xacro ', description_xacro,
         ' use_xarm:=true',
         ' use_static_geometry:=true',
@@ -36,9 +37,19 @@ def generate_launch_description():
         ' xarm_mount_yaw:=', xarm_mount_yaw,
         ' use_laptop_collision:=', use_laptop_collision,
         ' laptop_open_angle_deg:=', laptop_open_angle_deg,
-    ])
+    ]
+    robot_description_content = Command(description_cmd)
     robot_description = {
         'robot_description': ParameterValue(robot_description_content, value_type=str)
+    }
+    # move_group plans against the same description with every fixed-structure
+    # collision box grown by planning_margin per side (see planning_margin.xacro in
+    # ranger_xarm_description): MoveIt only checks discrete states, so paths can
+    # graze the structure by ~1-2 mm between them. robot_state_publisher and
+    # ros2_control keep the true geometry.
+    planning_robot_description = {
+        'robot_description': ParameterValue(
+            Command(description_cmd + [' planning_margin:=', planning_margin]), value_type=str)
     }
 
     pkg = Path(get_package_share_directory('ranger_xarm_moveit_config'))
@@ -75,14 +86,16 @@ def generate_launch_description():
         executable='move_group',
         output='screen',
         parameters=[
-            robot_description,
+            planning_robot_description,
             robot_description_semantic,
             robot_description_kinematics,
             {'robot_description_planning': robot_description_planning},
             planning_pipeline,
             planning_scene_monitor,
             {'allow_trajectory_execution': False},
-            {'publish_robot_description': True},
+            # Not published: /robot_description is robot_state_publisher's true
+            # model; this node's description carries the planning margin.
+            {'publish_robot_description': False},
             {'publish_robot_description_semantic': True},
             {'use_sim_time': False},
         ],
@@ -113,7 +126,7 @@ def generate_launch_description():
         output='screen',
         arguments=['-d', rviz_config],
         parameters=[
-            robot_description,
+            planning_robot_description,
             robot_description_semantic,
             robot_description_kinematics,
             planning_pipeline,
@@ -121,6 +134,10 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'planning_margin', default_value='0.005',
+            description='Per-side inflation (m) of fixed-structure collision boxes in '
+                        "move_group's description only; 0 = true geometry."),
         DeclareLaunchArgument('xarm_mount_yaw', default_value='0.0'),
         DeclareLaunchArgument('use_laptop_collision', default_value='true'),
         DeclareLaunchArgument('laptop_open_angle_deg', default_value='90.0'),
