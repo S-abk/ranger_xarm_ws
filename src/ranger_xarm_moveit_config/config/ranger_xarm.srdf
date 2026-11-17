@@ -118,4 +118,34 @@
   <disable_collisions link1="xarm_xarm_gripper_base_link" link2="wrist_d435_plate_link" reason="Mounted"/>
   <!-- Camera is screwed to the plate (CAD contact, 0.008 mm; ~0.2 mm with the boxes). -->
   <disable_collisions link1="wrist_d435_plate_link" link2="wrist_d435_mount_link" reason="Mounted"/>
+  <disable_collisions link1="wrist_d435_mount_link" link2="xarm_left_finger" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_mount_link" link2="xarm_left_inner_knuckle" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_mount_link" link2="xarm_left_outer_knuckle" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_mount_link" link2="xarm_link6" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_mount_link" link2="xarm_right_finger" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_mount_link" link2="xarm_right_inner_knuckle" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_mount_link" link2="xarm_right_outer_knuckle" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_mount_link" link2="xarm_xarm_gripper_base_link" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_plate_link" link2="xarm_left_finger" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_plate_link" link2="xarm_left_inner_knuckle" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_plate_link" link2="xarm_left_outer_knuckle" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_plate_link" link2="xarm_right_finger" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_plate_link" link2="xarm_right_inner_knuckle" reason="Rigid"/>
+  <disable_collisions link1="wrist_d435_plate_link" link2="xarm_right_outer_knuckle" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_finger" link2="xarm_link6" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_finger" link2="xarm_right_inner_knuckle" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_finger" link2="xarm_right_outer_knuckle" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_finger" link2="xarm_xarm_gripper_base_link" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_inner_knuckle" link2="xarm_link6" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_inner_knuckle" link2="xarm_right_finger" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_inner_knuckle" link2="xarm_right_inner_knuckle" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_inner_knuckle" link2="xarm_right_outer_knuckle" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_outer_knuckle" link2="xarm_link6" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_outer_knuckle" link2="xarm_right_finger" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_outer_knuckle" link2="xarm_right_inner_knuckle" reason="Rigid"/>
+  <disable_collisions link1="xarm_left_outer_knuckle" link2="xarm_right_outer_knuckle" reason="Rigid"/>
+  <disable_collisions link1="xarm_link6" link2="xarm_right_finger" reason="Rigid"/>
+  <disable_collisions link1="xarm_link6" link2="xarm_right_inner_knuckle" reason="Rigid"/>
+  <disable_collisions link1="xarm_link6" link2="xarm_right_outer_knuckle" reason="Rigid"/>
+  <disable_collisions link1="xarm_right_finger" link2="xarm_xarm_gripper_base_link" reason="Rigid"/>
 </robot>
