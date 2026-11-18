@@ -5,6 +5,7 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -174,6 +175,7 @@ def generate_launch_description():
             robot_description_kinematics,
             planning_pipeline,
         ],
+        condition=IfCondition(LaunchConfiguration('use_rviz')),
     )
 
     return LaunchDescription([
@@ -184,6 +186,8 @@ def generate_launch_description():
         DeclareLaunchArgument('xarm_mount_yaw', default_value='0.0'),
         DeclareLaunchArgument('use_laptop_collision', default_value='true'),
         DeclareLaunchArgument('laptop_open_angle_deg', default_value='90.0'),
+        DeclareLaunchArgument('use_rviz', default_value='true',
+                              description='Start RViz with the planning view.'),
         robot_state_publisher,
         ros2_control_node,
         joint_state_broadcaster_spawner,
