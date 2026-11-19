@@ -8,6 +8,7 @@ for hardware too, and there is no second description to drift.
 
     ros2 launch ranger_xarm_gazebo sim.launch.py
     ros2 launch ranger_xarm_gazebo sim.launch.py headless:=true
+    ros2 launch ranger_xarm_gazebo sim.launch.py sensors:=true gpu:=nvidia
     ros2 launch ranger_xarm_gazebo sim.launch.py world:=/abs/path/to/your.sdf
 
 This brings up joint control only. It does not start MoveIt: once the
@@ -60,6 +61,25 @@ def launch_setup(context, *args, **kwargs):
     sensors = LaunchConfiguration('sensors').perform(context).lower() in ('true', '1', 'yes')
     odom_tf = LaunchConfiguration('odom_tf').perform(context).lower() in ('true', '1', 'yes')
     wheel_drive = LaunchConfiguration('wheel_drive').perform(context).lower()
+    gpu = LaunchConfiguration('gpu').perform(context).lower()
+    if gpu not in ('default', 'nvidia'):
+        raise ValueError(f"gpu must be default or nvidia, got {gpu}")
+    render_env = []
+    if gpu == 'nvidia':
+        # NVIDIA PRIME render offload for gz's GUI (GLX) and its rendering
+        # sensors (EGL, also headless). On a hybrid-graphics machine the
+        # default device is often the integrated GPU, which also draws the
+        # desktop: with the cameras on, gz then falls to a fraction of real
+        # time and delivers clock and joint states in bursts.
+        egl_vendor = '/usr/share/glvnd/egl_vendor.d/10_nvidia.json'
+        if not os.path.exists(egl_vendor):
+            raise RuntimeError(f'gpu:=nvidia, but {egl_vendor} is missing: '
+                               'is the NVIDIA driver (libnvidia-gl) installed?')
+        render_env = [
+            SetEnvironmentVariable('__NV_PRIME_RENDER_OFFLOAD', '1'),
+            SetEnvironmentVariable('__GLX_VENDOR_LIBRARY_NAME', 'nvidia'),
+            SetEnvironmentVariable('__EGL_VENDOR_LIBRARY_FILENAMES', egl_vendor),
+        ]
     if wheel_drive not in ('effort', 'velocity'):
         raise ValueError(f"wheel_drive must be effort or velocity, got {wheel_drive}")
     prefix = 'xarm_'
@@ -366,7 +386,7 @@ def launch_setup(context, *args, **kwargs):
     # existing yet.
     base_nodes = [kinematics, odometry] if drive_base else []
 
-    return [
+    return render_env + [
         gz, rsp, clock_bridge, spawn,
         # Controllers are claimed only once the model exists in gz: the
         # controller_manager the spawners talk to is created by the plugin
@@ -434,6 +454,12 @@ def generate_launch_description():
                               description='Absolute path to a gz world file.'),
         DeclareLaunchArgument('headless', default_value='false',
                               description='Run gz without its GUI.'),
+        DeclareLaunchArgument(
+            'gpu', default_value='default',
+            description='Where gz renders its GUI and rendering sensors: '
+                        'default (the system default device) or nvidia '
+                        '(NVIDIA PRIME render offload, for hybrid-graphics '
+                        'machines whose default is the integrated GPU).'),
         DeclareLaunchArgument('add_gripper', default_value='true',
                               description='Include the xArm gripper.'),
         DeclareLaunchArgument('start_rviz', default_value='false'),
