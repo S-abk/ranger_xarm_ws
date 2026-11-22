@@ -140,6 +140,15 @@ def generate_launch_description():
             '--controller-manager-timeout', '30',
         ],
     )
+    # The teleop trajectory controller (ranger_xarm_teleop), loaded inactive: the teleop
+    # stack's command mux is the only thing that ever activates it (strict switch, arm still).
+    teleop_controller_spawner = Node(
+        package='controller_manager', executable='spawner', output='screen',
+        arguments=[
+            'teleop_arm_controller', '--inactive', '--controller-manager',
+            '/controller_manager', '--controller-manager-timeout', '30',
+        ],
+    )
     
     trusted_volume_filter = Node(
         package='ranger_xarm_moveit_config',
@@ -233,6 +242,7 @@ def generate_launch_description():
         joint_state_broadcaster_spawner,
         gripper_action_proxy,
         trajectory_controller_spawner,
+        teleop_controller_spawner,
         trusted_volume_filter,
         move_group,
         rviz,

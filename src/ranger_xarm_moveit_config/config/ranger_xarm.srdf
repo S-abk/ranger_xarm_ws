@@ -65,7 +65,9 @@
   <disable_collisions link1="xarm_link1" link2="xarm_link2" reason="Adjacent"/>
   <disable_collisions link1="xarm_link1" link2="xarm_link3" reason="Never"/>
   <disable_collisions link1="xarm_link2" link2="xarm_link3" reason="Adjacent"/>
-  <disable_collisions link1="xarm_link2" link2="xarm_link4" reason="Never"/>
+  <!-- xarm_link2 - xarm_link4 is checked: it collides within the joint limits (joint 3 above
+       about 8.6 deg with joint 4 near 130-186 deg mod 360; up to 5.5 mm penetration at the
+       joint-3 upper limit), so "Never" did not hold. -->
   <disable_collisions link1="xarm_link3" link2="xarm_link4" reason="Adjacent"/>
   <disable_collisions link1="xarm_link3" link2="xarm_link5" reason="Never"/>
   <disable_collisions link1="xarm_link3" link2="xarm_link6" reason="Never"/>

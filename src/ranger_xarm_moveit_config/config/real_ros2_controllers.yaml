@@ -8,6 +8,11 @@ controller_manager:
     xarm6_traj_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
+    # The teleop trajectory controller (ranger_xarm_teleop): spawned inactive; only its
+    # command mux activates it, and only with the arm stopped.
+    teleop_arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
 xarm6_traj_controller:
   ros__parameters:
     joints:
@@ -36,3 +41,28 @@ xarm6_traj_controller:
       xarm_joint4: {trajectory: 1.0, goal: 0.01}
       xarm_joint5: {trajectory: 1.0, goal: 0.01}
       xarm_joint6: {trajectory: 1.0, goal: 0.01}
+
+teleop_arm_controller:
+  ros__parameters:
+    joints:
+      - xarm_joint1
+      - xarm_joint2
+      - xarm_joint3
+      - xarm_joint4
+      - xarm_joint5
+      - xarm_joint6
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    allow_partial_joints_goal: false
+    # Streamed commands continue from the last commanded point, not from the measured state.
+    interpolate_from_desired_state: true
+    # No command for this long after the last received point: hold position.
+    cmd_timeout: 0.2
+    state_publish_rate: 50.0
+    action_monitor_rate: 20.0
+    constraints:
+      goal_time: 0.0
+      stopped_velocity_tolerance: 0.0
