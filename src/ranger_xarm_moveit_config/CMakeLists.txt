@@ -44,6 +44,10 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_mobile_base_srdf test/test_mobile_base_srdf.py
     ENV MOBILE_BASE_SRDF=${MOBILE_BASE_SRDF} MOBILE_BASE_WHEELS_SRDF=${MOBILE_BASE_WHEELS_SRDF}
     TIMEOUT 60)
+  # Performs real_execution.launch.py's semantic-description choice and description command
+  # in a launch context; starts nothing.
+  ament_add_pytest_test(test_real_execution_launch test/test_real_execution_launch.py
+    TIMEOUT 60)
 endif()
 
 ament_package()
