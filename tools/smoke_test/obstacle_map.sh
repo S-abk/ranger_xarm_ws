@@ -52,7 +52,8 @@ for v in $VARIANTS; do
   PG=$!
   up=
   for i in $(seq 1 180); do
-    ros2 control list_controllers 2>/dev/null | grep -q "ranger_wheel_controller .*active" && { up=$i; break; }
+    # timeout: if gz-sim dies at start-up the call can block for good instead of failing
+    timeout 10 ros2 control list_controllers 2>/dev/null | grep -q "ranger_wheel_controller .*active" && { up=$i; break; }
     kill -0 "$PG" 2>/dev/null || break
     sleep 1
   done

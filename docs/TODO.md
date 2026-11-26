@@ -76,7 +76,10 @@ payload varies enough to matter.
 - **The fault.** The description welds `world -> base_footprint` by default (`fix_base_to_world`). Until this change, no real-robot launch file overrode that. With the base driver or the filter publishing `odom -> base_footprint`, the frame had two parents.
 - **What it did.** The moving parent wins in every listener, `world` drops out of the tree, and MoveIt's planning frame (`world`) was cut off. Its lidar obstacle map never built, and MoveIt planned through obstacles as if the space were free. Reproduced without hardware: every arrival order, a late listener, and after the odometry stopped.
 - **The fix.** The bring-up launch files weld the base only when nothing publishes its pose. With the base running, MoveIt plans in `odom` through a planar virtual joint (README, "Frames"). The two static `base_footprint -> base_link` publishers that duplicated the description's joint are gone.
-- **How it is checked.** `tools/frames/check_frames.py` checks every bring-up combination for one parent per frame. `tools/smoke_test/obstacle_map.sh` checks the obstacle map with the base driven in simulation. The first combined bring-up on the robot has not been run yet.
+- **How it is checked.** `tools/frames/check_frames.py` checks every bring-up combination for one parent per frame. `tools/smoke_test/obstacle_map.sh` checks the obstacle map with the base driven in simulation.
+- **Its first run on this change failed one tolerance (T6).** While the base drove, the world-fixed map gained up to 84 stray cells away from the obstacle, against 50 allowed (an earlier run: 18). The obstacle's own cells stayed put, and MoveIt refused the obstacle.
+- Open: what the stray cells are. Suspected, not shown: ground returns lifted by the chassis pitching on its suspension, which the planar base pose does not model.
+- The first combined bring-up on the robot has not been run yet.
 
 This is not the fault in the next entry. That one had `base_footprint` under `base_link`. Both show the same silence: tf2 replaces a parent without a warning.
 
