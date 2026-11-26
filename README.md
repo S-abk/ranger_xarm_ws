@@ -371,14 +371,31 @@ set of options to pick from:
 - MoveIt reads the base pose from TF.
 - Planned trajectories still name only the arm's joints.
 
-`robot.launch.py` and `base_bringup.launch.py` pass this automatically. `real_execution.launch.py` and the simulators' `moveit.launch.py` take it as `fix_base_to_world` and `drive_base` respectively.
+`robot.launch.py` and `base_bringup.launch.py` pass this automatically. `real_execution.launch.py` and the simulators' `moveit.launch.py` take it as `fix_base_to_world` and `drive_base` respectively. `planning_frame:=base_footprint` keeps the shipped `ranger_xarm.srdf` instead, so MoveIt plans on the base (next paragraphs).
 
 **The obstacle map lives in MoveIt's planning frame.** move_group ignores `octomap_frame` in `sensors_3d.yaml`: MoveIt 2 always passes its planning frame to the map. With the base running the planning frame is `odom`, so the map stays put while the base drives.
 
-**MoveIt does not watch odometry for you.** These were measured in simulation (the report of the change that introduced this):
-- A jump in odometry, such as a heading step, leaves stale copies of what was seen before it. Anything seen only before the jump is misplaced by the jump: 10 degrees moves an obstacle 1.3 m away by 0.25 m. Clear the map with `/clear_octomap` (`std_srvs/srv/Empty`) before the next arm motion.
+**Which planning frame to use** (`planning_frame` on `robot.launch.py`, `real_execution.launch.py` and the simulators' `moveit.launch.py`; it only matters while the base is running).
+
+| `planning_frame` | where the obstacle map lives | use it when | do not use it when |
+| --- | --- | --- | --- |
+| `odom` (default) | in the world | the arm may move while the base drives, or obstacles seen earlier must stay where they are after the base has moved | odometry is untrusted, jumps, or may be missing (see below) |
+| `base_footprint` | on the robot | the base stands still whenever the arm moves, and odometry is not trusted | the base moves while the arm plans or moves: what the map shows is then stale relative to the robot until the next scans clear it (measured in simulation: up to about 0.2 m off and 250 stray cells while driving) |
+
+With the base off, both give `world`.
+
+**MoveIt does not watch odometry for you** (`planning_frame:=odom`). These were measured in simulation (the report of the change that introduced this):
+- A jump in odometry, such as a heading step, leaves stale copies of what was seen before it. Anything seen only before the jump is misplaced by the jump: 10 degrees moves an obstacle 1.3 m away by 0.25 m.
 - If odometry stops, MoveIt keeps the last base pose and a frozen map, and goes on planning. The only sign is an INFO line about dropped clouds.
 - If odometry has not started yet, the map stays empty and MoveIt plans as if nothing were there. One WARN at startup ("Unable to update multi-DOF joint 'virtual_joint'") is the only sign.
+
+**Before and during any arm motion with the base running, stop if:**
+1. the transform `odom -> base_footprint` is older than 0.5 s (`ros2 run tf2_ros tf2_echo odom base_footprint`; compare its stamps with the clock);
+2. move_group has logged "Unable to update multi-DOF joint 'virtual_joint'" since you last looked;
+3. the obstacle map in RViz does not show an obstacle you can see;
+4. odometry has jumped (heading or position). Clear the map before the next arm motion: `ros2 service call /clear_octomap std_srvs/srv/Empty`.
+
+**Clear the map once at the start**, after move_group has all its transforms (no more "Missing transform for shape" errors in its log) and before the first arm motion. In the first seconds, before the self-filter has every link's transform, the lidar puts cells on the robot itself into the map. In simulation they cleared within seconds, but one made the first plan fail.
 
 **Not supported.**
 - `real_execution.launch.py` beside `base_bringup.launch.py` starts two `robot_state_publisher`s. Use `robot.launch.py` for arm and base together.
