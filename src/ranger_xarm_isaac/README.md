@@ -243,6 +243,12 @@ managers on the same joints.
 
 Its description differs from `control.launch.py`'s in one way only: `planning_margin` (default 5 mm) grows the fixed-structure collision boxes for planning. See the planning margin section in the `ranger_xarm_moveit_config` README.
 
+`drive_base` must match `control.launch.py`'s (and `sim.launch.py`'s in Gazebo).
+- With `drive_base:=true`, move_group gets the wheeled, unwelded description and the driven-base semantic description for a wheeled description (`ranger_xarm_mobile_base_wheels.srdf`: the shipped one plus a planar virtual joint `odom -> base_footprint`, plus the four wheel-against-body pairs whose contact was observed here). It plans in `odom`, with the base pose taken from wheel odometry's TF.
+- Left `false` beside a driven base, its planning frame `world` does not exist in TF.
+
+`obstacle_map:=true` (default `false`) adds the lidar obstacle map as `real_execution.launch.py` wires it: the trusted-volume filter (zones off) and `sensors_3d.yaml`, unchanged. `tools/smoke_test/obstacle_map.sh` checks it with the base driven.
+
 Only the controller map is local (`config/moveit_controllers_isaac.yaml`).
 The existing maps name the unprefixed `xarm6_traj_controller` that
 `fake_execution` spawns, and on hardware a `xarm_gripper` GripperCommand

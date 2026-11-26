@@ -71,10 +71,30 @@ which is what makes it immune to the sim-time trap in
 default) from the loaded figure, or expose it as a parameter if the
 payload varies enough to matter.
 
+## Fixed in simulation, to confirm on the robot: `base_footprint` under `world` and `odom`
+
+- **The fault.** The description welds `world -> base_footprint` by default (`fix_base_to_world`). Until this change, no real-robot launch file overrode that. With the base driver or the filter publishing `odom -> base_footprint`, the frame had two parents.
+- **What it did.** The moving parent wins in every listener, `world` drops out of the tree, and MoveIt's planning frame (`world`) was cut off. Its lidar obstacle map never built, and MoveIt planned through obstacles as if the space were free. Reproduced without hardware: every arrival order, a late listener, and after the odometry stopped.
+- **The fix.** The bring-up launch files weld the base only when nothing publishes its pose. With the base running, MoveIt plans in `odom` through a planar virtual joint (README, "Frames"). The two static `base_footprint -> base_link` publishers that duplicated the description's joint are gone.
+- **How it is checked.** `tools/frames/check_frames.py` checks every bring-up combination for one parent per frame. `tools/smoke_test/obstacle_map.sh` checks the obstacle map with the base driven in simulation.
+- **What it judges.** It checks the map at rest only, 2 s after the base stops, because arm motion is planned and executed only with the base at rest. While the base moves the map was not shown to be right: stray cells off the obstacle ranged from 18 to 136 over five runs. They are reported, not judged.
+- **Open, cause not established (1).** Ground returns 3 m or more away recorded 0.105–0.135 m high, piling up at rest (up to 117 cells). Not pitch: the measured pitch and roll explain 3–16 % of them.
+- **Open, cause not established (2).** While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs over four runs and exceeded 50 in 2 (53 and 58); at rest they were 0 in every leg. The 53 were a displaced copy of the obstacle (0.15–0.2 m off) in one snapshot, gone by the next; the others were not examined.
+- The first combined bring-up on the robot has not been run yet.
+
+This is not the fault in the next entry. That one had `base_footprint` under `base_link`. Both show the same silence: tf2 replaces a parent without a warning.
+
+## Backlog: small faults in the checks' own output
+
+- **Obstacle-map check, T5 label** (`tools/smoke_test/obstacle_probe.py`). With no map at all (the welded control), T5 fails because there was no first map, but its line prints only the ratios, `[0.0, 0.0] (<= 0.1)`, beside FAIL. The line should say "no map".
+- **NumPy warning in the obstacle-map check** (`tools/smoke_test/octomap_cells.py`, `apply`): `RuntimeWarning: invalid value encountered in matmul`, in every run. It most likely comes from non-finite cloud points: the cloud is read with `skip_nans=True`, which does not drop infinities. Not confirmed. Drop non-finite points before transforming.
+- **`ranger_xarm_sensors` test `test_robot_includes_this_packages_camera_launch`** fails unless the workspace is built with `--symlink-install`. It compares the resolved camera launch path with the source tree, and a plain install copies the file. Also fails on `main`. Compare against the installed share directory instead, or skip without a symlink install.
+
 ## Resolved: the EKF heading fault was a two-parent TF tree
 
 Kept because the failure mode is worth recognising, not because the bug
-is still open.
+is still open. (A different two-parent fault, `world` and `odom` over
+`base_footprint`, is the entry above.)
 
 `base_footprint` was enabled as a CHILD of `base_link`, while the EKF is
 configured with `base_link_frame: base_footprint` and `publish_tf: true`

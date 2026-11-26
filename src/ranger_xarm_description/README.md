@@ -75,4 +75,6 @@ The static geometry should now provide the visual reference needed to check xArm
 
 `base_link` is retained at the Ranger CAD/ROS reference used by all arm and sensor transforms. The exported Ranger visual reaches a lowest wheel-tread point at `z=-0.327028595 m`, so a fixed `base_footprint` frame is published there.
 
+`base_footprint` is the description's root. `fix_base_to_world` (default `true`) adds a link `world` and welds `base_footprint` to it. Pass `false` whenever something else publishes `base_footprint`'s pose (`odom -> base_footprint` from the base driver, the filter, or simulated wheel odometry): tf2 keeps one parent per frame, and the moving one silently wins. The bring-up launch files set it; see "Frames" in the workspace README.
+
 For RViz, set **Fixed Frame** to `base_footprint` (or set the Grid Z offset to `-0.327028595` while keeping `base_link`). Do not shift the robot geometry upward, because that would invalidate the already-validated arm and sensor transforms.

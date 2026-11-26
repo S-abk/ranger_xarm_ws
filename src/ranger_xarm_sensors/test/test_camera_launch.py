@@ -282,9 +282,42 @@ def test_robot_with_both_cameras_off_needs_no_serial_and_starts_no_camera(robot)
     moveit = [i for i in result.skipped
               if result.locations[i].endswith('real_execution.launch.py')]
     assert len(moveit) == 1 and moveit[0].condition is None
-    # The unconditional static transform is the only process left.
-    assert [(n.node_package, n.node_executable) for n in result.processes] == [
-        ('tf2_ros', 'static_transform_publisher')]
+    # No process is left: base_footprint -> base_link comes from the description
+    # (robot_state_publisher, inside MoveIt's launch), not from a second publisher.
+    assert [(n.node_package, n.node_executable) for n in result.processes] == []
+
+
+@pytest.mark.parametrize('enable_base, welded', [('true', 'false'), ('false', 'true')])
+def test_robot_welds_the_base_exactly_when_the_base_is_off(robot, enable_base, welded):
+    """With the base on, the driver (or the filter) publishes odom -> base_footprint, so
+    MoveIt's launch must get fix_base_to_world:=false; with it off, the default weld."""
+    args = {**BASE_ARGS, **OTHERS_OFF, 'enable_base': enable_base,
+            'enable_gantry_d455': 'false', 'enable_wrist_d435': 'false'}
+    result, context = run(robot, args)
+    moveit = [i for i in result.skipped
+              if result.locations[i].endswith('real_execution.launch.py')]
+    assert len(moveit) == 1
+    sub = lambda x: perform_substitutions(context, normalize_to_list_of_substitutions(x))
+    given = {sub(k): sub(v) for k, v in moveit[0].launch_arguments}
+    assert given['fix_base_to_world'] == welded
+    driver = [i for i in result.skipped
+              if result.locations[i].endswith('ranger_driver.launch.py')]
+    assert len(driver) == (1 if enable_base == 'true' else 0)
+
+
+@pytest.mark.parametrize('given_frame', [None, 'odom', 'base_footprint'])
+def test_robot_passes_the_planning_frame_choice_to_moveit(robot, given_frame):
+    """planning_frame reaches MoveIt's launch unchanged; odom when not given."""
+    args = {**BASE_ARGS, **OTHERS_OFF, 'enable_base': 'true',
+            'enable_gantry_d455': 'false', 'enable_wrist_d435': 'false'}
+    if given_frame:
+        args['planning_frame'] = given_frame
+    result, context = run(robot, args)
+    moveit = [i for i in result.skipped
+              if result.locations[i].endswith('real_execution.launch.py')]
+    sub = lambda x: perform_substitutions(context, normalize_to_list_of_substitutions(x))
+    given = {sub(k): sub(v) for k, v in moveit[0].launch_arguments}
+    assert given['planning_frame'] == (given_frame or 'odom')
 
 
 def test_robot_moveit_still_launches_with_cameras_off_and_on(robot):

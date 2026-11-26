@@ -30,6 +30,7 @@ def generate_launch_description():
         ' xarm_report_type:=', report_type,
         ' xarm_velocity_control:=false',
         ' laptop_open_angle_deg:=', laptop_open_angle_deg,
+        ' fix_base_to_world:=', LaunchConfiguration('fix_base_to_world'),
     ])
     robot_description = {
         'robot_description': ParameterValue(robot_description_content, value_type=str)
@@ -92,6 +93,10 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('report_type', default_value='normal'),
         DeclareLaunchArgument('laptop_open_angle_deg', default_value='90.0'),
+        DeclareLaunchArgument(
+            'fix_base_to_world', default_value='true',
+            description='true: base welded to world (nothing publishes the base pose). Set false '
+                        'only when the base driver or the filter publishes odom -> base_footprint.'),
         robot_state_publisher,
         ros2_control_node,
         joint_state_broadcaster_spawner,

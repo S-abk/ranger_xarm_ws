@@ -248,6 +248,8 @@ failure:
 
 ```bash
 ros2 launch ranger_xarm_isaac moveit.launch.py start_rviz:=true
+# with sim.launch.py drive_base:=true, match it (MoveIt then plans in odom):
+ros2 launch ranger_xarm_isaac moveit.launch.py drive_base:=true start_rviz:=true
 ```
 
 Despite the package, nothing in that launch is Isaac-specific: it starts

@@ -71,6 +71,48 @@ other.
 Both cameras must publish for `--sensors` to pass; `--no-wrist-camera` drops
 the wrist D435 check for a model without the gripper plate (`add_gripper:=false`).
 
+## Obstacle map with the base driven
+
+```bash
+tools/smoke_test/obstacle_map.sh          # mobile and welded; or: obstacle_map.sh mobile | welded | free
+```
+
+**What it judges.** The map is judged at rest only, 2 s after the base stops, because MoveIt plans and executes arm motion only with the base at rest. While the base moves, the map was not shown to be right: over five runs of one design, the count of stray cells in motion ranged from 18 to 136. That count is printed per leg as INFO and not judged.
+
+**What it does.** Gazebo comes up with `drive_base:=true sensors:=true`, plus MoveIt with the lidar obstacle map.
+1. Before any obstacle: an arm goal J* to the robot's right (tool point about 0.6 m out) must plan.
+2. A 0.20 m box is placed on J*'s tool point.
+3. The base drives closed-loop on `/odom`: 1 m back, back to the start, 0.8 m left, back again.
+4. While moving, the planning scene is stored every 0.5 s and decoded after the base stops.
+
+**Tolerances** (`obstacle_probe.py`). They were fixed from the measurements that chose this design and are not loosened to make a run pass.
+
+| | after each leg | tolerance |
+| --- | --- | --- |
+| T1 | box cells' centroid moved, at rest | ≤ 0.031 m |
+| T2 | box cells vs the first map, at rest | ≥ 50 % |
+| T3 | before the box: J* plans (up to 3 attempts; every failed attempt is printed with its start-state and J* contacts); J* with the box in the way: invalid with an `<octomap>` contact, plan refused; once moved on: valid | as stated |
+| T4 | lidar points in the box; odometry drift; every leg reached, sampled in motion, every MoveIt query answered (else INCONCLUSIVE) | ≥ 100; ≤ 0.02 m |
+| T5 | cells where the box would be if the map moved with the robot | ≤ 10 % |
+
+**Not judged, printed as INFO per leg:**
+- the worst in-motion count of cells 0.1–1.5 m high off the box (formerly T6), with 50 shown for reference;
+- the same count split into far ground (≤ 0.30 m high, ≥ 3.0 m from the base) and the rest;
+- the same split at rest.
+
+The `mobile` variant also checks that a planned trajectory names the six arm joints only and executes.
+
+**Variants.**
+- `mobile`: `moveit.launch.py drive_base:=true obstacle_map:=true`, the default design. Must pass T1–T5 and the arm-only check.
+- `welded`: `obstacle_map:=true` without `drive_base`, as before this change. MoveIt's planning frame is missing from TF, so no map builds. The negative control: it must fail T3 for its stated reason (it plans with no box, then plans into the box). If it does not, the check reports that it cannot tell, and fails.
+- `free`: `moveit.launch.py drive_base:=true obstacle_map:=true planning_frame:=base_footprint`, the selectable alternative that plans on the base. Runnable on request, judged on nothing. **This check does not tell the two planning frames apart:** at rest, 2 s after a stop, both maps are right in simulation.
+
+**Running it.**
+- About three and a half minutes per variant.
+- `SMOKE_GPU=nvidia` renders on the NVIDIA card.
+- `SMOKE_DOMAIN_ID` works as in `gazebo.sh`.
+- Exit status: 0 as expected, 1 not, 2 no simulation, 3 inconclusive.
+
 `probe.py` is simulator-agnostic: point it at anything already running
 (`probe.py --drive --sensors --arm --moveit`) and it runs the same checks.
 `--moveit` needs `move_group` running (`ranger_xarm_isaac moveit.launch.py`);

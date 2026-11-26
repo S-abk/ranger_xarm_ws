@@ -226,9 +226,14 @@ ros2 launch ranger_xarm_isaac control.launch.py drive_base:=true
 # 4. Drive it
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
-# 5. MoveIt for the arm (optional)
-ros2 launch ranger_xarm_isaac moveit.launch.py start_rviz:=true
+# 5. MoveIt for the arm (optional; drive_base must match step 3)
+ros2 launch ranger_xarm_isaac moveit.launch.py drive_base:=true start_rviz:=true
 ```
+
+`moveit.launch.py` serves Gazebo too. Its `drive_base` must match the simulator's: with
+the base driven, MoveIt plans in `odom` (see [Frames](#frames-the-planning-frame-and-the-obstacle-map)).
+`obstacle_map:=true` feeds the simulated Ouster into MoveIt's obstacle map exactly as on the
+robot. It is off by default.
 
 `/cmd_vel` is executed the way the real Ranger's AgileX driver executes it:
 `linear.y` crabs (all wheels parallel), a turn tighter than the minimum radius
@@ -347,11 +352,82 @@ set of options to pick from:
 `real_hardware_check` (arm connected, nothing commanded) → `real_execution`
 (arm will move) → `robot.launch.py` (everything).
 
+### Frames, the planning frame and the obstacle map
+
+**The frames.**
+- `base_footprint` is on the ground, under the base. It is the description's root.
+- `base_link` is the base's CAD reference, 0.327 m above `base_footprint`, through a fixed joint of the description that `robot_state_publisher` publishes. They are different frames; nothing else publishes that joint.
+- Who parents `base_footprint` depends on what runs:
+
+| bring-up | `fix_base_to_world` | parent of `base_footprint` | MoveIt plans in |
+| --- | --- | --- | --- |
+| arm only: `real_execution`, `real_hardware_check`, `robot.launch.py enable_base:=false`, `fake_execution`, `planning_demo`, the simulators without `drive_base` | `true` (default) | `world`, fixed | `world` |
+| base running: `robot.launch.py` (default `enable_base:=true`), `base_bringup`, the simulators with `drive_base:=true` | `false` | `odom`, published by the driver, the filter, or simulated wheel odometry | `odom` (default), or `base_footprint` with `planning_frame:=base_footprint` |
+
+**Why the rule is "welded only when nothing publishes the base pose".** tf2 keeps one parent per frame. A welded `world -> base_footprint` beside a moving `odom -> base_footprint` loses to the moving one, silently, and `world` drops out of the tree. MoveIt's planning frame then means nothing.
+
+**How MoveIt plans in `odom`.** With the base running, move_group loads `ranger_xarm_mobile_base.srdf`:
+- It is `ranger_xarm.srdf` plus one planar virtual joint `odom -> base_footprint`, generated at build time and never edited.
+- MoveIt reads the base pose from TF.
+- Planned trajectories still name only the arm's joints.
+- In the simulators (wheels in the description), it loads `ranger_xarm_mobile_base_wheels.srdf` instead. That file is the one above plus four pairs: each wheel against the base body, whose contact was observed in simulation. It too is generated, never edited.
+
+`robot.launch.py` and `base_bringup.launch.py` pass this automatically. `real_execution.launch.py` and the simulators' `moveit.launch.py` take it as `fix_base_to_world` and `drive_base` respectively. `planning_frame:=base_footprint` keeps the shipped `ranger_xarm.srdf` instead, so MoveIt plans on the base (next paragraphs).
+
+**The obstacle map lives in MoveIt's planning frame.** move_group ignores `octomap_frame` in `sensors_3d.yaml`: MoveIt 2 always passes its planning frame to the map. With the base running the planning frame is `odom`, so the map is kept in the world rather than on the robot.
+
+**MoveIt plans and executes arm motion only with the base at rest, at least 2 s after it stops.**
+- What was shown, in simulation: 2 s after each stop, an obstacle's cells were within 0.03 m of where they were before the base drove 1 m out and back, and MoveIt refused the obstacle (`tools/smoke_test/obstacle_map.sh`).
+- What was not shown: that the map is right while the base moves. Over five runs of the same design, the worst count per run of stray cells off the obstacle while driving ranged from 18 to 136.
+
+**Open items, cause not established:**
+- Ground returns 3 m or more from the base were recorded 0.105–0.135 m high, and piled up at rest (up to 117 cells). It is not the chassis pitching: the measured pitch and roll explain only 3–16 % of them.
+- While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs over four runs, and exceeded 50 in 2 of them (53 and 58); at rest they were 0 in every leg. The 53 were a displaced copy of the obstacle in one snapshot, 0.15–0.2 m from where it was relative to the robot, gone by the next; the 58 and the others were not examined.
+
+**Which planning frame to use** (`planning_frame` on `robot.launch.py`, `real_execution.launch.py` and the simulators' `moveit.launch.py`; it only matters while the base is running).
+
+| `planning_frame` | where the obstacle map lives | use it when | do not use it when |
+| --- | --- | --- | --- |
+| `odom` (default) | in the world | obstacles seen earlier must stay where they are after the base has moved and stopped, and odometry is trusted | odometry is untrusted, jumps, or may be missing (see below) |
+| `base_footprint` | on the robot | odometry is not trusted; what the lidar sees again within seconds of each stop is enough | obstacles seen only before the base moved must still be there after it stops: this map moves with the robot, and only fresh scans place things again |
+
+Either way, the arm plans and moves only with the base at rest (above). With the base off, both give `world`.
+
+At rest, in simulation, `base_footprint` placed the obstacle within 0.030 m and 0.034 m of where it was first mapped, in its two runs (the check's tolerance is 0.031 m), and MoveIt refused it in both.
+
+**On the real robot, use `planning_frame:=base_footprint` until the base driver's odometry fix has passed its hardware tests.** The wheel odometry has a known heading fault at sideways stops. A heading jump corrupts the `odom` map silently (next paragraph); the `base_footprint` map does not depend on odometry.
+
+**MoveIt does not watch odometry for you** (`planning_frame:=odom`). These were measured in a simulation of each fault:
+- A jump in odometry, such as a heading step, leaves stale copies of what was seen before it. Anything seen only before the jump is misplaced by the jump: 10 degrees moves an obstacle 1.3 m away by 0.25 m.
+- If odometry stops, MoveIt keeps the last base pose and a frozen map, and goes on planning. The only sign is an INFO line about dropped clouds.
+- If odometry has not started yet, the map stays empty and MoveIt plans as if nothing were there. One WARN at startup ("Unable to update multi-DOF joint 'virtual_joint'") is the only sign.
+
+**Before and during any arm motion with the base running, stop if:**
+1. the transform `odom -> base_footprint` is older than 0.5 s (`ros2 run tf2_ros tf2_echo odom base_footprint`; compare its stamps with the clock);
+2. move_group has logged "Unable to update multi-DOF joint 'virtual_joint'" since you last looked;
+3. the obstacle map in RViz does not show an obstacle you can see;
+4. odometry has jumped (heading or position). Clear the map before the next arm motion: `ros2 service call /clear_octomap std_srvs/srv/Empty`.
+
+**Clear the map once at the start**, after move_group has all its transforms (no more "Missing transform for shape" errors in its log) and before the first arm motion. In the first seconds, before the self-filter has every link's transform, the lidar puts cells on the robot itself into the map. In simulation they cleared within seconds, but one made the first plan fail.
+
+**After any clear, the map starts empty.** Before clearing, name one obstacle you can see as the reference. After the clear, the arm does not move until both of these hold:
+1. about 20 s have passed: twice the 9.35 s the map took to rebuild in simulation. Measure it on the robot.
+2. the reference obstacle is shown in the map again.
+
+**MoveIt treats space the lidar has never seen as free, at all times, so the map is an aid to planning and not a guard.**
+
+**Not supported.**
+- `real_execution.launch.py` beside `base_bringup.launch.py` starts two `robot_state_publisher`s. Use `robot.launch.py` for arm and base together.
+- `publish_odom_tf:=false` without the filter running leaves nothing publishing the base pose.
+
+`tools/frames/check_frames.py` checks every supported combination for one parent per frame and one source per transform. It starts nothing.
+
 ### Two things that will bite you
 
 **Exactly one node may own `odom -> base_footprint`.** The Ranger driver does by
-default; `publish_odom_tf:=false` hands it to the gyro-fused EKF in
-`ranger_xarm_bringup/ekf_odom_imu.launch.py`. With two owners TF silently takes
+default; `publish_odom_tf:=false` (on `robot.launch.py` or `base_bringup.launch.py`)
+hands it to the gyro-fused EKF in `ranger_xarm_bringup/ekf_odom_imu.launch.py`, which
+must then be started. With two owners TF silently takes
 whichever message arrived last, and the symptom looks like a bad sensor rather
 than a configuration error.
 
@@ -409,7 +485,13 @@ than at planning time.
   which walks them without starting anything. `tools/smoke_test/` automates
   the simulated part: it brings the
   robot up, drives it, moves the arm and checks the sensors, in about two
-  minutes. `tools/moveit_test/` runs a fixed set of MoveIt goals, including
+  minutes. `tools/smoke_test/obstacle_map.sh` drives the base past an obstacle with
+  the lidar obstacle map on and checks, at rest after each stop, that the map still
+  holds the obstacle where it is and MoveIt refuses it (about seven minutes, with one
+  negative control). `tools/frames/check_frames.py`
+  checks every bring-up combination for one parent per frame and one source per
+  transform, from the launch files and the expanded description, in seconds.
+  `tools/moveit_test/` runs a fixed set of MoveIt goals, including
   some close to the gantry, and checks every planned path against the true
   collision model.
 - Custom packages use `ament_cmake` with Python scripts installed via
