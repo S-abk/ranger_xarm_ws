@@ -6,7 +6,8 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
-from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (Command, FileContent, IfElseSubstitution, LaunchConfiguration,
+                                  PathJoinSubstitution)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -24,6 +25,7 @@ def generate_launch_description():
     laptop_open_angle_deg = LaunchConfiguration('laptop_open_angle_deg')
     start_rviz = LaunchConfiguration('start_rviz')
     trusted_volume_enabled = LaunchConfiguration('trusted_volume_enabled')
+    fix_base_to_world = LaunchConfiguration('fix_base_to_world')
 
     description_xacro = PathJoinSubstitution([
         FindPackageShare('ranger_xarm_description'), 'urdf', 'ranger_xarm.urdf.xacro'
@@ -40,6 +42,7 @@ def generate_launch_description():
         ' xarm_report_type:=', report_type,
         ' xarm_velocity_control:=false',
         ' laptop_open_angle_deg:=', laptop_open_angle_deg,
+        ' fix_base_to_world:=', fix_base_to_world,
     ]
     robot_description_content = Command(description_cmd)
     robot_description = {
@@ -59,8 +62,14 @@ def generate_launch_description():
     trusted_volume_config = str(
         pkg / 'config' / 'trusted_manipulation_volume.yaml'
     )
-    srdf_text = (pkg / 'config' / 'ranger_xarm.srdf').read_text(encoding='utf-8')
-    robot_description_semantic = {'robot_description_semantic': srdf_text}
+    # Welded base: the shipped semantic description, planning frame world. Base pose published
+    # by the driver or the filter (fix_base_to_world:=false): the generated one with a planar
+    # virtual joint odom -> base_footprint, so MoveIt plans in odom and its obstacle map (kept in
+    # the planning frame) stays put while the base drives.
+    robot_description_semantic = {'robot_description_semantic': ParameterValue(FileContent(
+        IfElseSubstitution(fix_base_to_world,
+                           str(pkg / 'config' / 'ranger_xarm.srdf'),
+                           str(pkg / 'config' / 'ranger_xarm_mobile_base.srdf'))), value_type=str)}
     robot_description_kinematics = {
         'robot_description_kinematics': _load_yaml(pkg / 'config' / 'kinematics.yaml')
     }
@@ -227,6 +236,15 @@ def generate_launch_description():
             description=(
                 'Assumed physical xarm_drive_joint position at startup. '
                 '0.0 rad = open, ~0.86 rad = closed. No startup motion is commanded.'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'fix_base_to_world', default_value='true',
+            description=(
+                'true: the base is welded to world (arm alone; nothing publishes the base pose). '
+                'false: the base driver or the filter publishes odom -> base_footprint; the '
+                'description is rooted at base_footprint and MoveIt plans in odom. '
+                'ranger_xarm_sensors robot.launch.py sets this from enable_base.'
             ),
         ),
         DeclareLaunchArgument(
