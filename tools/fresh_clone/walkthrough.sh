@@ -101,9 +101,11 @@ export MAKEFLAGS=-j4 COLCON_HOME=/root/.colcon
 dpkg-query -W -f='${Package}\t${Version}\n' | sort > "$OUT/dpkg_ros.tsv"
 
 # git is what fetches the README, so it comes first; the README's own apt
-# line installs it too.
+# line installs it too. The clone under test is mounted read-only and owned
+# by the host user, so git must trust it; set system-wide, because the
+# second hardware pass runs with another HOME.
 apt-get install -y git > /dev/null
-git config --global --add safe.directory '*'
+git config --system --add safe.directory '*'
 git clone -q "$REPO" /tmp/readme_src && git -C /tmp/readme_src checkout -q "$REF" || exit 3
 README=/tmp/readme_src/README.md
 git -C /tmp/readme_src log --oneline -1 > "$OUT/commit.txt"
