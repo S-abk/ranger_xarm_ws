@@ -407,7 +407,11 @@ Either way, the arm plans and moves only with the base at rest (above). With the
 
 **Clear the map once at the start**, after move_group has all its transforms (no more "Missing transform for shape" errors in its log) and before the first arm motion. In the first seconds, before the self-filter has every link's transform, the lidar puts cells on the robot itself into the map. In simulation they cleared within seconds, but one made the first plan fail.
 
-**After any clear, the map starts empty.** MoveIt plans through empty space as if it were free (safety invariant 3). Do not move the arm until the map again shows the obstacles you can see (stop criterion 3), and remember that what the lidar cannot see stays empty.
+**After any clear, the map starts empty.** Before clearing, name one obstacle you can see as the reference. After the clear, the arm does not move until both of these hold:
+1. about 20 s have passed: twice the 9.35 s the map took to rebuild in simulation. Measure it on the robot.
+2. the reference obstacle is shown in the map again.
+
+**MoveIt treats space the lidar has never seen as free, at all times, so the map is an aid to planning and not a guard.**
 
 **Not supported.**
 - `real_execution.launch.py` beside `base_bringup.launch.py` starts two `robot_state_publisher`s. Use `robot.launch.py` for arm and base together.
