@@ -297,8 +297,8 @@ def test_robot_welds_the_base_exactly_when_the_base_is_off(robot, enable_base, w
     moveit = [i for i in result.skipped
               if result.locations[i].endswith('real_execution.launch.py')]
     assert len(moveit) == 1
-    given = {perform_substitutions(context, k): perform_substitutions(context, v)
-             for k, v in moveit[0].launch_arguments}
+    sub = lambda x: perform_substitutions(context, normalize_to_list_of_substitutions(x))
+    given = {sub(k): sub(v) for k, v in moveit[0].launch_arguments}
     assert given['fix_base_to_world'] == welded
     driver = [i for i in result.skipped
               if result.locations[i].endswith('ranger_driver.launch.py')]
