@@ -374,18 +374,25 @@ set of options to pick from:
 `robot.launch.py` and `base_bringup.launch.py` pass this automatically. `real_execution.launch.py` and the simulators' `moveit.launch.py` take it as `fix_base_to_world` and `drive_base` respectively. `planning_frame:=base_footprint` keeps the shipped `ranger_xarm.srdf` instead, so MoveIt plans on the base (next paragraphs).
 
 **The obstacle map lives in MoveIt's planning frame.** move_group ignores `octomap_frame` in `sensors_3d.yaml`: MoveIt 2 always passes its planning frame to the map. With the base running the planning frame is `odom`, so the map is kept in the world rather than on the robot.
-- In simulation, an obstacle's cells stayed within 0.03 m while the base drove 1 m and came back, and MoveIt refused the obstacle.
-- While driving, the map also gained stray cells away from the obstacle: up to 84 in one run, 18 in another. The cause is not yet established; `tools/smoke_test/obstacle_map.sh` fails on this (T6).
-- Until that is settled, do not count on the map while the base is moving.
+
+**MoveIt plans and executes arm motion only with the base at rest, at least 2 s after it stops.**
+- What was shown, in simulation: 2 s after each stop, an obstacle's cells were within 0.03 m of where they were before the base drove 1 m out and back, and MoveIt refused the obstacle (`tools/smoke_test/obstacle_map.sh`).
+- What was not shown: that the map is right while the base moves. Over five runs of the same design, the worst count per run of stray cells off the obstacle while driving ranged from 18 to 136.
+
+**Open items, cause not established:**
+- Ground returns 3 m or more from the base were recorded 0.105–0.135 m high, and piled up at rest (up to 117 cells). It is not the chassis pitching: the measured pitch and roll explain only 3–16 % of them.
+- Once in twelve legs, one snapshot at the start of a leg held a displaced copy of the obstacle: 53 cells, 0.15–0.2 m from where the obstacle was relative to the robot. It was gone by the next snapshot.
 
 **Which planning frame to use** (`planning_frame` on `robot.launch.py`, `real_execution.launch.py` and the simulators' `moveit.launch.py`; it only matters while the base is running).
 
 | `planning_frame` | where the obstacle map lives | use it when | do not use it when |
 | --- | --- | --- | --- |
-| `odom` (default) | in the world | obstacles seen earlier must stay where they are after the base has moved and stopped | odometry is untrusted, jumps, or may be missing (see below); and, until the stray cells while driving are explained (above), whenever the arm would move while the base drives |
-| `base_footprint` | on the robot | the base stands still whenever the arm moves, and odometry is not trusted | the base moves while the arm plans or moves: what the map shows is then stale relative to the robot until the next scans clear it (measured in simulation: up to about 0.2 m off and 250 stray cells while driving) |
+| `odom` (default) | in the world | obstacles seen earlier must stay where they are after the base has moved and stopped, and odometry is trusted | odometry is untrusted, jumps, or may be missing (see below) |
+| `base_footprint` | on the robot | odometry is not trusted; what the lidar sees again within seconds of each stop is enough | obstacles seen only before the base moved must still be there after it stops: this map moves with the robot, and only fresh scans place things again |
 
-With the base off, both give `world`.
+Either way, the arm plans and moves only with the base at rest (above). With the base off, both give `world`.
+
+**On the real robot, use `planning_frame:=base_footprint` until the base driver's odometry fix has passed its hardware tests.** The wheel odometry has a known heading fault at sideways stops. A heading jump corrupts the `odom` map silently (next paragraph); the `base_footprint` map does not depend on odometry.
 
 **MoveIt does not watch odometry for you** (`planning_frame:=odom`). These were measured in a simulation of each fault:
 - A jump in odometry, such as a heading step, leaves stale copies of what was seen before it. Anything seen only before the jump is misplaced by the jump: 10 degrees moves an obstacle 1.3 m away by 0.25 m.

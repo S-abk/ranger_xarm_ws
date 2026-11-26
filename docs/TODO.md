@@ -77,8 +77,9 @@ payload varies enough to matter.
 - **What it did.** The moving parent wins in every listener, `world` drops out of the tree, and MoveIt's planning frame (`world`) was cut off. Its lidar obstacle map never built, and MoveIt planned through obstacles as if the space were free. Reproduced without hardware: every arrival order, a late listener, and after the odometry stopped.
 - **The fix.** The bring-up launch files weld the base only when nothing publishes its pose. With the base running, MoveIt plans in `odom` through a planar virtual joint (README, "Frames"). The two static `base_footprint -> base_link` publishers that duplicated the description's joint are gone.
 - **How it is checked.** `tools/frames/check_frames.py` checks every bring-up combination for one parent per frame. `tools/smoke_test/obstacle_map.sh` checks the obstacle map with the base driven in simulation.
-- **Its first run on this change failed one tolerance (T6).** While the base drove, the world-fixed map gained up to 84 stray cells away from the obstacle, against 50 allowed (an earlier run: 18). The obstacle's own cells stayed put, and MoveIt refused the obstacle.
-- Open: what the stray cells are. Suspected, not shown: ground returns lifted by the chassis pitching on its suspension, which the planar base pose does not model.
+- **What it judges.** It checks the map at rest only, 2 s after the base stops, because arm motion is planned and executed only with the base at rest. While the base moves the map was not shown to be right: stray cells off the obstacle ranged from 18 to 136 over five runs. They are reported, not judged.
+- **Open, cause not established (1).** Ground returns 3 m or more away recorded 0.105–0.135 m high, piling up at rest (up to 117 cells). Not pitch: the measured pitch and roll explain 3–16 % of them.
+- **Open, cause not established (2).** One displaced copy of the obstacle (53 cells, 0.15–0.2 m off) in one snapshot at the start of a leg, gone by the next; once in twelve legs.
 - The first combined bring-up on the robot has not been run yet.
 
 This is not the fault in the next entry. That one had `base_footprint` under `base_link`. Both show the same silence: tf2 replaces a parent without a warning.
