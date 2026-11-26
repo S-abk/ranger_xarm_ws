@@ -184,7 +184,8 @@ Each estimator lives in its own world frame; teleporting the base to a fixed
 start zeroes ground truth but leaves the filter integrating from the heading
 it already held, so the two frames sit at an angle and a raw displacement
 difference scores that angle as error. `ekf_score.py` and `segprobe.py` now
-rotate the estimator displacement by the initial heading difference first. The
+rotate the estimator displacement by the initial heading difference first.
+*(`segprobe.py` is not in this repository any more.)* The
 flat-ground numbers were taken without a teleport, so they were never affected.
 
 ### `Detected jump back in time` on rough ground was not benign
@@ -347,6 +348,8 @@ rough-ground gap was the drive.**
 
 ### Why the default stays effort: transition scrub
 
+*(Superseded: `sim.launch.py`'s `wheel_drive` now defaults to `velocity`.)*
+
 The velocity drive regresses elsewhere. On flat ground wheel odometry
 carries a constant +1.33 deg heading error in every trial. Per segment,
 heading being frame-free:
@@ -384,7 +387,7 @@ error per segment:
 | --- | --- | --- | --- |
 | none | -0.61 | +2.03 | +1.33 |
 | power 1 (plain cosine) | -0.60 | +0.79 | +0.14 |
-| power 3 (default) | -0.59 | +0.11 | -0.53 |
+| power 3 (default then; now 10) | -0.59 | +0.11 | -0.53 |
 
 The gate removes the crab scrub. Power 1's small total is partly
 cancellation between the arc and the crab; per segment, power 3 is
@@ -441,7 +444,9 @@ gate power 3, and scores match the gated sweep (rough ground
 
 **Isaac keeps the gate off** (`steer_gate_power: 0.0` in
 `ranger_xarm_isaac/launch/control.launch.py`), now on measurement rather
-than caution; see the next section.
+than caution; see the next section. *(Superseded: `control.launch.py` no
+longer passes `steer_gate_power`, so Isaac uses the controller's default,
+10.)*
 
 ### The gate in Isaac: better motion, worse scores, and why
 
@@ -840,6 +845,9 @@ sensor rate, check the Ouster's `t` field reaches KISS-ICP (deskew), and
 that a raised arm does not enter the 0.8 m `lidar_min_range`.
 
 ## Added: outdoor rough terrain (`outdoor_terrain.sdf`, Isaac `--terrain`)
+
+*(Isaac's `--terrain` and `--room` options are no longer in
+`ranger_xarm_isaac`; the gz worlds below remain.)*
 
 The bump worlds sit on a lattice, and the wheels (y = +/-0.185 m) run
 between its rows (y = 0, +/-0.55 m, each +/-0.08 m wide). On the scored
