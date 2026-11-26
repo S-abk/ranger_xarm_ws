@@ -168,9 +168,10 @@ def generate_launch_description():
                         'control.launch.py drive_base:=true): MoveIt then plans in odom.'),
         DeclareLaunchArgument(
             'planning_frame', default_value='odom', choices=['odom', 'base_footprint'],
-            description='With drive_base:=true: odom (planar virtual joint; the obstacle map '
-                        'stays put in the world) or base_footprint (the map moves with the robot). '
-                        'Ignored without drive_base (plans in world).'),
+            description='With drive_base:=true: odom (planar virtual joint; the obstacle map is '
+                        'kept in the world) or base_footprint (the map moves with the robot). '
+                        'Either way, plan and move the arm only with the base at rest, 2 s after '
+                        'it stops. Ignored without drive_base (plans in world).'),
         DeclareLaunchArgument(
             'obstacle_map', default_value='false',
             description='Feed the simulated Ouster cloud into MoveIt\'s obstacle map, through '

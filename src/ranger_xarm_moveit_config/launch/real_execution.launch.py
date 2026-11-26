@@ -67,9 +67,11 @@ def generate_launch_description():
     # by the driver or the filter (fix_base_to_world:=false):
     #   planning_frame:=odom (default) -- the generated one with a planar virtual joint
     #     odom -> base_footprint: MoveIt plans in odom and its obstacle map (kept in the
-    #     planning frame) stays put while the base drives;
+    #     planning frame) is kept in the world; it depends on odometry;
     #   planning_frame:=base_footprint -- the shipped one: MoveIt plans in base_footprint, the
     #     map moves with the robot and does not depend on odometry.
+    # Either way the map was shown right only at rest, 2 s after the base stops, and arm
+    # motion is planned and executed only then (workspace README, "Frames").
     shipped_srdf = str(pkg / 'config' / 'ranger_xarm.srdf')
     robot_description_semantic = {'robot_description_semantic': ParameterValue(FileContent(
         IfElseSubstitution(fix_base_to_world, shipped_srdf, IfElseSubstitution(
@@ -256,9 +258,11 @@ def generate_launch_description():
             'planning_frame', default_value='odom', choices=['odom', 'base_footprint'],
             description=(
                 'With the base free (fix_base_to_world:=false): odom plans in the odometry frame '
-                'through a planar virtual joint, so the obstacle map stays put while the base '
-                'drives; base_footprint plans on the base, so the map moves with the robot and '
-                'does not depend on odometry. Ignored while the base is welded (plans in world).'
+                'through a planar virtual joint, so the obstacle map is kept in the world and '
+                'depends on odometry; base_footprint plans on the base, so the map moves with the '
+                'robot and does not depend on odometry. Either way, plan and move the arm only '
+                'with the base at rest, 2 s after it stops. Ignored while the base is welded '
+                '(plans in world).'
             ),
         ),
         DeclareLaunchArgument(

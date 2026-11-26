@@ -259,8 +259,8 @@ def generate_launch_description():
             'planning_frame', default_value='odom', choices=['odom', 'base_footprint'],
             description='With the base on: where MoveIt plans. odom keeps the obstacle map in '
                         'the world (needs good odometry); base_footprint keeps it on the robot '
-                        '(no odometry needed; valid only while the base stands still). '
-                        'See real_execution.launch.py.'),
+                        '(no odometry needed). Either way, plan and move the arm only with the '
+                        'base at rest, 2 s after it stops. See the workspace README, "Frames".'),
         DeclareLaunchArgument('enable_deadman', default_value='true'),
         DeclareLaunchArgument('deadman_timeout', default_value='0.35'),
         DeclareLaunchArgument('max_linear_x', default_value='0.25'),

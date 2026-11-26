@@ -484,8 +484,9 @@ than at planning time.
   the simulated part: it brings the
   robot up, drives it, moves the arm and checks the sensors, in about two
   minutes. `tools/smoke_test/obstacle_map.sh` drives the base past an obstacle with
-  the lidar obstacle map on and checks the map stays put and MoveIt avoids it
-  (about ten minutes, with two negative controls). `tools/frames/check_frames.py`
+  the lidar obstacle map on and checks, at rest after each stop, that the map still
+  holds the obstacle where it is and MoveIt refuses it (about seven minutes, with one
+  negative control). `tools/frames/check_frames.py`
   checks every bring-up combination for one parent per frame and one source per
   transform, from the launch files and the expanded description, in seconds.
   `tools/moveit_test/` runs a fixed set of MoveIt goals, including

@@ -9,8 +9,9 @@
 The output is the shipped semantic description with exactly one element added: a planar
 virtual joint from odom to base_footprint, the description's root link when the base is not
 welded to the world (fix_base_to_world:=false). MoveIt then plans in odom and takes the base's
-pose from TF, so the lidar obstacle map, which move_group keeps in the planning frame, stays put
-in the world while the base drives. Nothing else differs; --check proves that.
+pose from TF, so the lidar obstacle map, which move_group keeps in the planning frame, is kept
+in the world (shown right at rest, after the base stops; not shown while it moves). Nothing
+else differs; --check proves that.
 
 --wheels makes a third file, for descriptions that have wheel links (use_wheels:=true, the
 simulators with drive_base:=true): the mobile-base file plus exactly the wheel-against-body
