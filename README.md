@@ -362,7 +362,7 @@ set of options to pick from:
 | bring-up | `fix_base_to_world` | parent of `base_footprint` | MoveIt plans in |
 | --- | --- | --- | --- |
 | arm only: `real_execution`, `real_hardware_check`, `robot.launch.py enable_base:=false`, `fake_execution`, `planning_demo`, the simulators without `drive_base` | `true` (default) | `world`, fixed | `world` |
-| base running: `robot.launch.py` (default `enable_base:=true`), `base_bringup`, the simulators with `drive_base:=true` | `false` | `odom`, published by the driver, the filter, or simulated wheel odometry | `odom` |
+| base running: `robot.launch.py` (default `enable_base:=true`), `base_bringup`, the simulators with `drive_base:=true` | `false` | `odom`, published by the driver, the filter, or simulated wheel odometry | `odom` (default), or `base_footprint` with `planning_frame:=base_footprint` |
 
 **Why the rule is "welded only when nothing publishes the base pose".** tf2 keeps one parent per frame. A welded `world -> base_footprint` beside a moving `odom -> base_footprint` loses to the moving one, silently, and `world` drops out of the tree. MoveIt's planning frame then means nothing.
 
