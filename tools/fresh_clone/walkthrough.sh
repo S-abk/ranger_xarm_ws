@@ -37,7 +37,7 @@ step() {  # step ID DESCRIPTION EXPECT COMMAND   (EXPECT: pass or fail)
   local id=$1 desc=$2 expect=$3 cmd=$4
   echo "=== [$id] $desc" | tee -a "$OUT/walkthrough.log"
   local t0=$SECONDS
-  timeout 5400 bash -c "$cmd" >> "$OUT/walkthrough.log" 2>&1
+  timeout -k 60 5400 bash -c "$cmd" >> "$OUT/walkthrough.log" 2>&1
   local rc=$? verdict
   if { [ "$expect" = pass ] && [ $rc -eq 0 ]; } || { [ "$expect" = fail ] && [ $rc -ne 0 ]; }; then
     verdict=OK; else verdict=UNEXPECTED; fi
@@ -69,9 +69,9 @@ run_block() {  # run_block ID NAME EXPECT [HOME]
     # A launch line, with any continuation lines after it, becomes a fixed
     # no-op; its text goes to $src.skipped and nothing of it is executed.
     awk -v repo="$REPO" -v inited=$inited -v skipped="$src.skipped" '
-      cont { print > skipped; cont = /\\$/; next }
+      cont { print > skipped; cont = /\\$/ && !/#/; next }
       /^[[:space:]]*ros2[[:space:]]+launch[[:space:]]/ {
-        print > skipped; print ": launch line skipped"; cont = /\\$/; next }
+        print > skipped; print ": launch line skipped"; cont = /\\$/ && !/#/; next }
       inited && /^[[:space:]]*sudo[[:space:]]+rosdep[[:space:]]+init/ {
         print ": rosdep already initialised"; next }
       { gsub(/<this repo>/, repo); print }' "$src.orig"
@@ -120,17 +120,26 @@ for s in arm base; do
 done
 step S4 "no hardware driver was installed" pass \
   "! grep -E '^ros-jazzy-(ouster-ros|realsense2-camera|librealsense2|sllidar-ros2|ranger-base)\b' $OUT/dpkg_sim.tsv"
-# Packages of the hardware path that the simulation install did bring in
-# (through ranger_xarm_isaac -> ranger_xarm_bringup), for the record.
+# Packages of the hardware path that the simulation install did bring in,
+# for the record: robot_localization through ranger_xarm_isaac ->
+# ranger_xarm_bringup, moveit_ros_perception through
+# ranger_xarm_moveit_config. (kiss_icp is built from source, not a deb.)
 step S4b "hardware-path packages the simulation install brought in (record)" pass \
   "grep -E '^ros-jazzy-(robot-localization|moveit-ros-perception)|^libpcl' $OUT/dpkg_sim.tsv | tee $OUT/sim_hardware_path_packages.txt; true"
 step S5 "check sim" pass \
   "source /opt/ros/jazzy/setup.bash && source $WS/install/setup.bash && python3 $WS/tools/deps/deps.py check sim"
-# Exit 1 (not a crash) and every driver the simulation install lacks named.
+# The state a hardware user is in before installing drivers: every package
+# of this workspace built, no driver present. The simulation build lacks
+# only ranger_xarm_sensors, which builds without its drivers (run-time
+# dependencies only; its one test is not built here).
+step S5b "build ranger_xarm_sensors, drivers absent" pass \
+  "source /opt/ros/jazzy/setup.bash && cd $WS && colcon build --packages-up-to ranger_xarm_sensors --cmake-args -DBUILD_TESTING=OFF"
+# Exit 1 with a MISSING list (not a crash), and every absent driver named.
 step S6 "check hardware, no drivers: exit 1 and names each missing driver" pass \
   "source /opt/ros/jazzy/setup.bash && source $WS/install/setup.bash
    python3 $WS/tools/deps/deps.py check hardware > $OUT/check_hardware_without_drivers.txt 2>&1; rc=\$?
    cat $OUT/check_hardware_without_drivers.txt; [ \$rc -eq 1 ] || exit 1
+   grep -q '^MISSING, ' $OUT/check_hardware_without_drivers.txt || exit 1
    for p in ranger_base ranger_msgs sllidar_ros2 ouster_ros realsense2_camera; do
      grep -q \"package \$p \" $OUT/check_hardware_without_drivers.txt || { echo \"not named: \$p\"; exit 1; }
    done"

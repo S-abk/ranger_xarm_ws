@@ -359,6 +359,10 @@ def check(entries):
         print(f'MISSING, {len(missing)}:')
         for what in sorted(missing):
             print(f'  {what}    (needed by {"; ".join(sorted(missing[what]))})')
+        if any('the target' in by for by in missing.values()):
+            print('A launch file of the target is not installed, so what it starts was not '
+                  'read and this list is incomplete. Build this workspace (colcon build) '
+                  'and check again.')
         return 1
     print('nothing missing')
     return 0
