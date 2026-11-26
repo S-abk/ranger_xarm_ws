@@ -424,7 +424,9 @@ than at planning time.
 - `tools/fresh_clone/run.sh` proves that a commit goes from `git clone` to a
   built, smoke-tested simulation on a bare Ubuntu 24.04 with ROS 2 Jazzy, by
   running this README's own code blocks in a container (the blocks marked
-  `<!-- fresh_clone: ... -->`; keep the markers when editing them).
+  `<!-- fresh_clone: ... -->`; keep the markers when editing them). Run it,
+  with `--drivers`, before merging any change to those blocks or to either
+  `.repos` file.
   `tools/deps/deps.py report` lists where every external package comes from.
 - `build/`, `install/` and `log/` are colcon output and are gitignored. Never
   edit or commit into them.

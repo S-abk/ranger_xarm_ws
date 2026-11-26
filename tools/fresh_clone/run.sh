@@ -13,13 +13,18 @@
 #   --drivers  also run the README's physical-robot dependency blocks (build
 #              only: nothing is launched) and the missing-package check
 #
+# Run it, with --drivers, before merging any change to the README's install
+# blocks (the ones after a `fresh_clone:` marker) or to either .repos file.
+# It is not a per-push check: it needs Docker, the network and most of an hour.
+#
 # Needs: Docker usable without sudo, network access to GitHub, the ROS and
-# Ubuntu package mirrors, about 10 GB of free disk and 8 GB of memory. Takes
-# 20-30 minutes, most of it apt. On the host this script only clones the
-# commit and starts the container; everything else (tools/fresh_clone/
-# walkthrough.sh) runs inside it, as the container's root, with no access to
-# host devices and the default bridge network. The result is
-# $OUT/steps.tsv, one line per step, each marked OK or UNEXPECTED.
+# Ubuntu package mirrors, about 10 GB of free disk and 8 GB of memory. Most
+# of the time is apt downloads, so it depends on the mirrors (one run took
+# 40 minutes before the hardware blocks). On the host this
+# script only clones the commit and starts the container; everything else
+# (tools/fresh_clone/walkthrough.sh) runs inside it, as the container's
+# root, with no access to host devices and the default bridge network. The
+# result is $OUT/steps.tsv, one line per step, each marked OK or UNEXPECTED.
 set -euo pipefail
 HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
 WS=$(cd "$HERE/../.." && pwd)
@@ -29,10 +34,10 @@ while [ $# -gt 0 ]; do
     --ref) REF=$2; shift 2;;
     --drivers) DRIVERS=1; shift;;
     --out) OUT=$2; shift 2;;
-    *) sed -n '2,22p' "$0"; exit 2;;
+    *) sed -n '2,27p' "$0"; exit 2;;
   esac
 done
-[ -n "$OUT" ] || { sed -n '2,22p' "$0"; exit 2; }
+[ -n "$OUT" ] || { sed -n '2,27p' "$0"; exit 2; }
 IMAGE=ubuntu:24.04@sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b
 mkdir -p "$OUT"
 SHA=$(git -C "$WS" rev-parse --verify "$REF^{commit}")
