@@ -64,7 +64,7 @@ On Ubuntu 24.04 with ROS 2 Jazzy installed and nothing else:
 
 <!-- fresh_clone: sim -->
 ```bash
-sudo apt install git python3-colcon-common-extensions python3-rosdep python3-vcstool
+sudo apt install ros-dev-tools   # git, compilers, colcon, rosdep, vcstool
 sudo rosdep init        # once per machine; it refuses if already done, which is fine
 rosdep update
 source /opt/ros/jazzy/setup.bash
