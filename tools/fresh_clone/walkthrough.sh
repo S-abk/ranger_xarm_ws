@@ -7,13 +7,14 @@
 # A README block is the first ```bash fence after a line
 #   <!-- fresh_clone: NAME -->
 # It runs as written, with these substitutions only: `<this repo>` becomes
-# the repository under test; every `ros2 launch` line is skipped and
-# recorded, never run (a simulator would open a window and never return, and
-# a physical-robot launch must never start here); `sudo rosdep init` is
-# skipped when rosdep is already initialised (the second pass). `sudo` is a
-# no-op shim because the container runs as root, and apt answers yes.
-# A block that still contains a launch file outside an echo after that is
-# refused, not run.
+# the repository under test; every launch line (and its continuation lines)
+# becomes a fixed no-op, its text saved beside the block, never run (a
+# simulator would open a window and never return, and a physical-robot
+# launch must never start here); `sudo rosdep init` becomes a no-op when
+# rosdep is already initialised (the second pass). `sudo` is a no-op shim
+# because the container runs as root, and apt answers yes. A block that
+# still names a launch file, a ros2 run, gz sim or rviz2 anywhere after
+# that is refused, not run.
 #
 # Env: REPO (clone URL or path), REF, DRIVERS (1 to run the hardware blocks),
 # OUT (log directory, bind-mounted).
@@ -36,7 +37,7 @@ step() {  # step ID DESCRIPTION EXPECT COMMAND   (EXPECT: pass or fail)
   local id=$1 desc=$2 expect=$3 cmd=$4
   echo "=== [$id] $desc" | tee -a "$OUT/walkthrough.log"
   local t0=$SECONDS
-  bash -c "$cmd" >> "$OUT/walkthrough.log" 2>&1
+  timeout 5400 bash -c "$cmd" >> "$OUT/walkthrough.log" 2>&1
   local rc=$? verdict
   if { [ "$expect" = pass ] && [ $rc -eq 0 ]; } || { [ "$expect" = fail ] && [ $rc -ne 0 ]; }; then
     verdict=OK; else verdict=UNEXPECTED; fi
@@ -61,15 +62,23 @@ run_block() {  # run_block ID NAME EXPECT [HOME]
     printf '%s\tREADME block %s\tmissing\texpected %s\tUNEXPECTED\t0s\n' "$id" "$name" "$expect" >> "$STEPS"
     return
   fi
+  local inited=0
+  [ -e /etc/ros/rosdep/sources.list.d/20-default.list ] && inited=1
   {
     echo 'set -ex'
-    sed -e "s#<this repo>#$REPO#g" \
-        -e 's#^\([[:space:]]*ros2 launch .*\)#echo "skipped, never run here: \1"#' "$src.orig" |
-      if [ -e /etc/ros/rosdep/sources.list.d/20-default.list ]; then
-        sed 's#^\(sudo rosdep init.*\)#echo "skipped (already initialised): \1"#'
-      else cat; fi
+    # A launch line, with any continuation lines after it, becomes a fixed
+    # no-op; its text goes to $src.skipped and nothing of it is executed.
+    awk -v repo="$REPO" -v inited=$inited -v skipped="$src.skipped" '
+      cont { print > skipped; cont = /\\$/; next }
+      /^[[:space:]]*ros2[[:space:]]+launch[[:space:]]/ {
+        print > skipped; print ": launch line skipped"; cont = /\\$/; next }
+      inited && /^[[:space:]]*sudo[[:space:]]+rosdep[[:space:]]+init/ {
+        print ": rosdep already initialised"; next }
+      { gsub(/<this repo>/, repo); print }' "$src.orig"
   } > "$src"
-  if grep -vE '^[[:space:]]*(echo |#)' "$src" | grep -qE 'launch\.(py|xml)|ros2 launch'; then
+  # Anything still naming a launch file or a GUI, anywhere on a line, is
+  # refused rather than run.
+  if grep -qE 'ros2[[:space:]]+(launch|run)|launch\.(py|xml)|gz[[:space:]]+sim|rviz2' "$src"; then
     printf '%s\tREADME block %s\trefused: starts a launch file\texpected %s\tUNEXPECTED\t0s\n' \
       "$id" "$name" "$expect" >> "$STEPS"
     return
@@ -110,17 +119,26 @@ for s in arm base; do
     "source /opt/ros/jazzy/setup.bash && cd $WS && SMOKE_DOMAIN_ID=81 LOG_DIR=$OUT/smoke_$s tools/smoke_test/gazebo.sh $s"
 done
 step S4 "no hardware driver was installed" pass \
-  "! grep -E '^ros-jazzy-(ouster-ros|realsense2-camera|librealsense2|robot-localization|sllidar-ros2|ranger-base)\b' $OUT/dpkg_sim.tsv"
+  "! grep -E '^ros-jazzy-(ouster-ros|realsense2-camera|librealsense2|sllidar-ros2|ranger-base)\b' $OUT/dpkg_sim.tsv"
+# Packages of the hardware path that the simulation install did bring in
+# (through ranger_xarm_isaac -> ranger_xarm_bringup), for the record.
+step S4b "hardware-path packages the simulation install brought in (record)" pass \
+  "grep -E '^ros-jazzy-(robot-localization|moveit-ros-perception)|^libpcl' $OUT/dpkg_sim.tsv | tee $OUT/sim_hardware_path_packages.txt; true"
 step S5 "check sim" pass \
   "source /opt/ros/jazzy/setup.bash && source $WS/install/setup.bash && python3 $WS/tools/deps/deps.py check sim"
-step S6 "check hardware, no drivers: must name every missing one" fail \
-  "source /opt/ros/jazzy/setup.bash && source $WS/install/setup.bash && python3 $WS/tools/deps/deps.py check hardware"
+# Exit 1 (not a crash) and every driver the simulation install lacks named.
+step S6 "check hardware, no drivers: exit 1 and names each missing driver" pass \
+  "source /opt/ros/jazzy/setup.bash && source $WS/install/setup.bash
+   python3 $WS/tools/deps/deps.py check hardware > $OUT/check_hardware_without_drivers.txt 2>&1; rc=\$?
+   cat $OUT/check_hardware_without_drivers.txt; [ \$rc -eq 1 ] || exit 1
+   for p in ranger_base ranger_msgs sllidar_ros2 ouster_ros realsense2_camera; do
+     grep -q \"package \$p \" $OUT/check_hardware_without_drivers.txt || { echo \"not named: \$p\"; exit 1; }
+   done"
 # What moveit_ros_perception (MoveIt's point-cloud octomap plugin, needed by
 # real_execution.launch.py) adds to a simulation install: itself and the
 # packages nothing else needs.
 step S7 "what moveit_ros_perception adds" pass \
   "apt-get -s purge --auto-remove ros-jazzy-moveit-ros-perception | grep '^Purg' > $OUT/perception_adds.txt; wc -l < $OUT/perception_adds.txt"
-awk '/=== \[S6\]/,/rc=/' "$OUT/walkthrough.log" > "$OUT/check_hardware_without_drivers.txt"
 
 # --- Hardware: (a) a driver workspace, then (b) one workspace ---------------
 if [ "$DRIVERS" = 1 ]; then
