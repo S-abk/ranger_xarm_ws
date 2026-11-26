@@ -29,4 +29,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_mobile_base_srdf test/test_mobile_base_srdf.py
+    ENV MOBILE_BASE_SRDF=${MOBILE_BASE_SRDF}
+    TIMEOUT 60)
+endif()
+
 ament_package()

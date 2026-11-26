@@ -287,6 +287,24 @@ def test_robot_with_both_cameras_off_needs_no_serial_and_starts_no_camera(robot)
     assert [(n.node_package, n.node_executable) for n in result.processes] == []
 
 
+@pytest.mark.parametrize('enable_base, welded', [('true', 'false'), ('false', 'true')])
+def test_robot_welds_the_base_exactly_when_the_base_is_off(robot, enable_base, welded):
+    """With the base on, the driver (or the filter) publishes odom -> base_footprint, so
+    MoveIt's launch must get fix_base_to_world:=false; with it off, the default weld."""
+    args = {**BASE_ARGS, **OTHERS_OFF, 'enable_base': enable_base,
+            'enable_gantry_d455': 'false', 'enable_wrist_d435': 'false'}
+    result, context = run(robot, args)
+    moveit = [i for i in result.skipped
+              if result.locations[i].endswith('real_execution.launch.py')]
+    assert len(moveit) == 1
+    given = {perform_substitutions(context, k): perform_substitutions(context, v)
+             for k, v in moveit[0].launch_arguments}
+    assert given['fix_base_to_world'] == welded
+    driver = [i for i in result.skipped
+              if result.locations[i].endswith('ranger_driver.launch.py')]
+    assert len(driver) == (1 if enable_base == 'true' else 0)
+
+
 def test_robot_moveit_still_launches_with_cameras_off_and_on(robot):
     """Walk MoveIt's own launch too: the description must expand without a camera.
 
