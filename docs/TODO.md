@@ -71,10 +71,20 @@ which is what makes it immune to the sim-time trap in
 default) from the loaded figure, or expose it as a parameter if the
 payload varies enough to matter.
 
+## Fixed in simulation, to confirm on the robot: `base_footprint` under `world` and `odom`
+
+- **The fault.** The description welds `world -> base_footprint` by default (`fix_base_to_world`). Until this change, no real-robot launch file overrode that. With the base driver or the filter publishing `odom -> base_footprint`, the frame had two parents.
+- **What it did.** The moving parent wins in every listener, `world` drops out of the tree, and MoveIt's planning frame (`world`) was cut off. Its lidar obstacle map never built, and MoveIt planned through obstacles as if the space were free. Reproduced without hardware: every arrival order, a late listener, and after the odometry stopped.
+- **The fix.** The bring-up launch files weld the base only when nothing publishes its pose. With the base running, MoveIt plans in `odom` through a planar virtual joint (README, "Frames"). The two static `base_footprint -> base_link` publishers that duplicated the description's joint are gone.
+- **What was proved.** `tools/frames/check_frames.py` and `tools/smoke_test/obstacle_map.sh` prove it in simulation. The first combined bring-up on the robot has not been run yet.
+
+This is not the fault in the next entry. That one had `base_footprint` under `base_link`. Both show the same silence: tf2 replaces a parent without a warning.
+
 ## Resolved: the EKF heading fault was a two-parent TF tree
 
 Kept because the failure mode is worth recognising, not because the bug
-is still open.
+is still open. (A different two-parent fault, `world` and `odom` over
+`base_footprint`, is the entry above.)
 
 `base_footprint` was enabled as a CHILD of `base_link`, while the EKF is
 configured with `base_link_frame: base_footprint` and `publish_tf: true`
