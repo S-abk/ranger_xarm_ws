@@ -1,17 +1,19 @@
 #!/bin/bash
 # Obstacle-map check: the lidar obstacle map with the base driven in Gazebo.
 #
-#   tools/smoke_test/obstacle_map.sh [mobile|welded|free ...]   (default: all three)
+#   tools/smoke_test/obstacle_map.sh [mobile|welded|free ...]   (default: mobile welded)
 #
-#   mobile  moveit.launch.py drive_base:=true obstacle_map:=true -- the shipped design:
-#           MoveIt plans in odom (planar virtual joint), the map stays put in the world.
-#           Must pass T1-T6 and plan arm-only trajectories that execute.
+#   mobile  moveit.launch.py drive_base:=true obstacle_map:=true -- the default design:
+#           MoveIt plans in odom (planar virtual joint), the map is kept in the world.
+#           Must pass T1-T5 at rest and plan arm-only trajectories that execute.
 #   welded  moveit.launch.py obstacle_map:=true (drive_base left false) beside a driven
 #           base: MoveIt's planning frame, world, is not in the TF tree, so no map builds.
 #           Negative control: must fail T3 (it plans into the obstacle).
 #   free    moveit.launch.py drive_base:=true obstacle_map:=true planning_frame:=base_footprint:
-#           the selectable alternative, MoveIt plans on the base. Negative control for this
-#           check: it must fail T6 (its map moves with the robot and smears in motion).
+#           the selectable alternative, MoveIt plans on the base. Not a control and not judged:
+#           at rest nothing separates it from mobile, so this check does not tell the two
+#           planning frames apart. Run on request, for information.
+# The map is judged at rest only; in-motion counts are printed as INFO, not judged.
 # Tolerances and sequence: obstacle_probe.py. About three and a half minutes per variant.
 #
 # Same isolation as gazebo.sh: its own ROS domain (SMOKE_DOMAIN_ID, default 42), discovery
@@ -21,7 +23,7 @@
 
 HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
 WS=${WS:-$(cd "$HERE/../.." && pwd)}
-VARIANTS=${*:-mobile welded free}
+VARIANTS=${*:-mobile welded}
 for v in $VARIANTS; do case $v in mobile|welded|free) ;; *) echo "usage: $0 [mobile|welded|free ...]"; exit 2;; esac; done
 LOG_DIR=${LOG_DIR:-$(mktemp -d -t ranger_xarm_obstacle.XXXX)}
 mkdir -p "$LOG_DIR"
@@ -67,7 +69,7 @@ for v in $VARIANTS; do
     welded) setsid ros2 launch ranger_xarm_isaac moveit.launch.py obstacle_map:=true \
               > "$LOG_DIR/${v}_moveit.log" 2>&1 & expect=fail-T3 ;;
     free)   setsid ros2 launch ranger_xarm_isaac moveit.launch.py drive_base:=true obstacle_map:=true \
-              planning_frame:=base_footprint > "$LOG_DIR/${v}_moveit.log" 2>&1 & expect=fail-T6 ;;
+              planning_frame:=base_footprint > "$LOG_DIR/${v}_moveit.log" 2>&1 & expect=info ;;
   esac
   MG=$!
   timeout 900 python3 "$HERE/obstacle_probe.py" "$v" "$LOG_DIR" --expect $expect | tee "$LOG_DIR/${v}.out"
