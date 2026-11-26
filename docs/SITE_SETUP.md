@@ -204,8 +204,9 @@ will work.
 
 **In `display.launch.py` RViz starts with its default Fixed Frame, `map`,
 which nothing publishes.** Set it to `base_footprint` or `base_link` or you
-get an empty view. Both are in the URDF: `base_footprint` is its root link
-(welded under `world` by default) and `base_link` hangs below it.
+get an empty view. Both are in the URDF: `base_footprint` is the robot's
+root link (welded under a `world` link by default) and `base_link` hangs
+below it.
 
 **The gripper's initial state is assumed, not measured** —
 `xarm_drive_joint = 0.0`. If it is physically elsewhere, MoveIt's model is

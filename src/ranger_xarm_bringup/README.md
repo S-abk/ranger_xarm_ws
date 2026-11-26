@@ -5,7 +5,7 @@ Runs on the laptop mounted on the Ranger.
 ## Owns
 
 - Ranger CAN driver
-- dynamic `odom -> base_footprint` (from the Ranger driver, or from the EKF in `ekf_odom_imu.launch.py` when the driver's `publish_odom_tf` is off)
+- dynamic `odom -> base_footprint`, from the Ranger driver (`base_bringup.launch.py` always lets the driver publish it; in `ranger_xarm_sensors`'s `robot.launch.py`, `publish_odom_tf:=false` hands it to the EKF in `ekf_odom_imu.launch.py`)
 - `robot_state_publisher`
 - onboard `/cmd_vel_remote -> /cmd_vel` deadman relay
 
