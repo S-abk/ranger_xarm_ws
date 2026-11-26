@@ -88,7 +88,10 @@ def launch_setup(context, *args, **kwargs):
         ] + drive_args), value_type=str)
     }
 
-    srdf_name = ('ranger_xarm_mobile_base.srdf' if drive_base and planning_frame == 'odom'
+    # With drive_base the description has wheel links, so planning in odom uses the wheels
+    # variant of the driven-base semantic description (plus the wheel-against-body pairs whose
+    # contact was observed; the real robot has no wheel links and uses the plain one).
+    srdf_name = ('ranger_xarm_mobile_base_wheels.srdf' if drive_base and planning_frame == 'odom'
                  else 'ranger_xarm.srdf')
     srdf = (moveit_pkg / 'config' / srdf_name).read_text(encoding='utf-8')
     joint_limits = _load_yaml(moveit_pkg / 'config' / 'joint_limits.yaml')

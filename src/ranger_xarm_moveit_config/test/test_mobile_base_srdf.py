@@ -34,6 +34,23 @@ def test_shipped_file_has_no_virtual_joint():
     assert '<virtual_joint' not in SHIPPED
 
 
+def test_wheels_file_is_mobile_base_plus_exactly_the_wheel_pairs():
+    mobile = Path(os.environ['MOBILE_BASE_SRDF']).read_text(encoding='utf-8')
+    wheels = Path(os.environ['MOBILE_BASE_WHEELS_SRDF']).read_text(encoding='utf-8')
+    assert GEN.check_wheels(mobile, wheels) == []
+    assert wheels == GEN.generate_wheels(mobile)
+    assert len(GEN.WHEEL_PAIRS) == 4
+    assert not any('xarm' in a + b for a, b in GEN.WHEEL_PAIRS)
+
+
+def test_wheels_check_rejects_an_arm_pair_or_a_missing_pair():
+    mobile = GEN.generate(SHIPPED)
+    wheels = GEN.generate_wheels(mobile)
+    arm = wheels.replace('front_left_wheel_link', 'xarm_link1', 1)
+    assert GEN.check_wheels(mobile, arm) != []
+    assert GEN.check_wheels(mobile, mobile) != []
+
+
 @pytest.mark.parametrize('mutate', [
     lambda s: s.replace('parent_frame="odom"', 'parent_frame="map"'),
     lambda s: s.replace('type="planar"', 'type="floating"'),

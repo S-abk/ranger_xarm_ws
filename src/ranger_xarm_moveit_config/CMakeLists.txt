@@ -19,8 +19,18 @@ add_custom_command(
           ${CMAKE_CURRENT_SOURCE_DIR}/config/ranger_xarm.srdf
   COMMENT "Generating ranger_xarm_mobile_base.srdf"
 )
-add_custom_target(mobile_base_srdf ALL DEPENDS ${MOBILE_BASE_SRDF})
-install(FILES ${MOBILE_BASE_SRDF} DESTINATION share/${PROJECT_NAME}/config)
+# For descriptions with wheel links (the simulators' drive_base:=true): the mobile-base file
+# plus exactly the wheel-against-body pairs whose contact was observed. Real robot: unused.
+set(MOBILE_BASE_WHEELS_SRDF ${CMAKE_CURRENT_BINARY_DIR}/ranger_xarm_mobile_base_wheels.srdf)
+add_custom_command(
+  OUTPUT ${MOBILE_BASE_WHEELS_SRDF}
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/make_mobile_base_srdf.py
+          --wheels ${MOBILE_BASE_SRDF} ${MOBILE_BASE_WHEELS_SRDF}
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/make_mobile_base_srdf.py ${MOBILE_BASE_SRDF}
+  COMMENT "Generating ranger_xarm_mobile_base_wheels.srdf"
+)
+add_custom_target(mobile_base_srdf ALL DEPENDS ${MOBILE_BASE_SRDF} ${MOBILE_BASE_WHEELS_SRDF})
+install(FILES ${MOBILE_BASE_SRDF} ${MOBILE_BASE_WHEELS_SRDF} DESTINATION share/${PROJECT_NAME}/config)
 
 install(PROGRAMS
   scripts/gripper_action_proxy.py
@@ -32,7 +42,7 @@ install(PROGRAMS
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_mobile_base_srdf test/test_mobile_base_srdf.py
-    ENV MOBILE_BASE_SRDF=${MOBILE_BASE_SRDF}
+    ENV MOBILE_BASE_SRDF=${MOBILE_BASE_SRDF} MOBILE_BASE_WHEELS_SRDF=${MOBILE_BASE_WHEELS_SRDF}
     TIMEOUT 60)
 endif()
 

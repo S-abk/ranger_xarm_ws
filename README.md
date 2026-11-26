@@ -370,6 +370,7 @@ set of options to pick from:
 - It is `ranger_xarm.srdf` plus one planar virtual joint `odom -> base_footprint`, generated at build time and never edited.
 - MoveIt reads the base pose from TF.
 - Planned trajectories still name only the arm's joints.
+- In the simulators (wheels in the description), it loads `ranger_xarm_mobile_base_wheels.srdf` instead. That file is the one above plus four pairs: each wheel against the base body, whose contact was observed in simulation. It too is generated, never edited.
 
 `robot.launch.py` and `base_bringup.launch.py` pass this automatically. `real_execution.launch.py` and the simulators' `moveit.launch.py` take it as `fix_base_to_world` and `drive_base` respectively. `planning_frame:=base_footprint` keeps the shipped `ranger_xarm.srdf` instead, so MoveIt plans on the base (next paragraphs).
 

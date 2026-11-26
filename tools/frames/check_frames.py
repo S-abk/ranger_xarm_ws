@@ -105,7 +105,7 @@ E_SIM = [(L + 'ranger_xarm_gazebo/launch/sim.launch.py',
           r"' use_wheels:=', 'true' if drive_base else 'false',"),
          (L + 'ranger_xarm_gazebo/launch/sim.launch.py',
           r"' fix_base_to_world:=', 'false' if drive_base else 'true',")]
-E_MG = [(MGL, r"'ranger_xarm_mobile_base\.srdf' if drive_base and planning_frame == 'odom'\s*"
+E_MG = [(MGL, r"'ranger_xarm_mobile_base_wheels\.srdf' if drive_base and planning_frame == 'odom'\s*"
                r"else 'ranger_xarm\.srdf'"),
         (MGL, r"'planning_frame', default_value='odom'"),
         (MGL, r"\[' use_wheels:=true fix_base_to_world:=false'\] if drive_base else \[\]")]
@@ -253,10 +253,13 @@ def srdf_check():
     problems = []
     if (cfg / 'ranger_xarm.srdf').read_bytes() != shipped_src:
         problems.append('installed ranger_xarm.srdf differs from the source (rebuild)')
-    r = subprocess.run([sys.executable, str(script), '--check', str(cfg / 'ranger_xarm.srdf'),
-                        str(cfg / 'ranger_xarm_mobile_base.srdf')], capture_output=True, text=True)
-    if r.returncode != 0:
-        problems.append(r.stdout.strip() or r.stderr.strip())
+    for mode, parent, child in (('--check', 'ranger_xarm.srdf', 'ranger_xarm_mobile_base.srdf'),
+                                ('--check-wheels', 'ranger_xarm_mobile_base.srdf',
+                                 'ranger_xarm_mobile_base_wheels.srdf')):
+        r = subprocess.run([sys.executable, str(script), mode, str(cfg / parent), str(cfg / child)],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            problems.append(r.stdout.strip() or r.stderr.strip())
     return problems
 
 
