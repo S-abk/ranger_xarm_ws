@@ -21,8 +21,9 @@ def generate_launch_description():
     xacro_file = PathJoinSubstitution([
         FindPackageShare('ranger_xarm_description'), 'urdf', 'ranger_xarm.urdf.xacro'
     ])
-    # The driver below always publishes odom -> base_footprint, so the base is
-    # never welded to world here: the description is rooted at base_footprint.
+    # The driver below (or with publish_odom_tf:=false the filter) publishes
+    # odom -> base_footprint, so the base is never welded to world here: the
+    # description is rooted at base_footprint.
     # base_footprint -> base_link is a fixed joint of the description, published
     # by robot_state_publisher; there is no second publisher of it.
     # Base only. For arm and base together use ranger_xarm_sensors robot.launch.py:
@@ -47,7 +48,9 @@ def generate_launch_description():
         launch_arguments={
             'can_device': can_device,
             'update_rate': update_rate,
-            'publish_odom_tf': 'true',
+            # false hands odom -> base_footprint to the filter
+            # (ekf_odom_imu.launch.py), which must then be started.
+            'publish_odom_tf': LaunchConfiguration('publish_odom_tf'),
             'odom_frame': 'odom',
             'base_frame': 'base_footprint',
             'odom_topic': 'odom',
@@ -74,6 +77,10 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('can_device', default_value='can0'),
         DeclareLaunchArgument('update_rate', default_value='50'),
+        DeclareLaunchArgument(
+            'publish_odom_tf', default_value='true',
+            description='The driver publishes odom -> base_footprint. Set false only with the '
+                        'filter (ekf_odom_imu.launch.py) running, which then owns it.'),
         DeclareLaunchArgument('use_xarm', default_value='false',
                               description='Base-only bringup defaults to no manipulator state.'),
         DeclareLaunchArgument('enable_deadman', default_value='true'),
