@@ -91,11 +91,11 @@ This builds the simulation path only and installs no hardware driver.
 uses its `moveit.launch.py`; for gz alone, `PKGS=ranger_xarm_gazebo` is
 enough. `ranger_xarm_isaac` depends on `ranger_xarm_bringup` for a Fast DDS
 profile file, and the bring-up package names the base driver, which
-simulation never starts: hence the `--skip-keys`. Two packages of the
-hardware path do come in: `robot_localization`, because the bring-up
-package names it for its EKF, and `moveit_ros_perception`, because the
-MoveIt configuration names the point-cloud octomap plugin the real robot
-uses. The real robot's
+simulation never starts: hence the `--skip-keys`. Three packages of the
+hardware path do come in: `robot_localization` from apt and `kiss_icp`
+built from source, because the bring-up package names them for its EKF and
+lidar odometry, and `moveit_ros_perception` from apt, because the MoveIt
+configuration names the point-cloud octomap plugin the real robot uses. The real robot's
 drivers are a separate step: [Running the physical robot](#running-the-physical-robot).
 A plain `colcon build` builds everything, including the hardware packages,
 which need their drivers only at run time.
