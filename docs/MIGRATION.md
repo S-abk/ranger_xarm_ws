@@ -64,6 +64,8 @@ the parts they are physically attached to.
 | (new) | xacro and `display.launch.py` arg `wrist_d435_roll` (empty = the model's value; only for recalibration) |
 
 The Gazebo `sim.launch.py` and Isaac `control.launch.py` arguments are unchanged.
+*(Since then, on `main` only: `sim.launch.py` gained `gpu`. It is not part
+of this migration.)*
 
 ### Scripts
 
@@ -101,7 +103,8 @@ ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<ip> \
   simulation. The pass thresholds are unchanged: at least half the commanded
   travel, under 15 cm off-axis. A 40 s wall-time cap per segment is only a
   safety limit. The legacy branch has the same change.
-- `gazebo.sh` and `isaac.sh` are unchanged. In Isaac the second camera costs
+- `gazebo.sh` and `isaac.sh` are unchanged. *(Since then, on `main` only:
+  both gained a MoveIt step. It is not part of this migration.)* In Isaac the second camera costs
   about 16 % of the simulation speed. See `tools/smoke_test/README.md`.
 
 ## 5. What happens if the old gantry D435 is still attached

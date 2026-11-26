@@ -7,7 +7,8 @@
 #         then MoveIt (ranger_xarm_isaac moveit.launch.py) plans and executes
 #   base  drive_base:=true sensors:=true; drive, sensors and the arm
 #
-# Needs the workspace built (colcon build --packages-up-to ranger_xarm_gazebo).
+# Needs the workspace built (colcon build --packages-up-to ranger_xarm_gazebo
+# ranger_xarm_isaac; arm's MoveIt step uses ranger_xarm_isaac's moveit.launch.py).
 # Runs on its own ROS domain (SMOKE_DOMAIN_ID, default 42) with discovery
 # kept to this machine, and on its own gz partition, so it neither sees nor
 # disturbs anything else running. Launch logs go to $LOG_DIR (default: a

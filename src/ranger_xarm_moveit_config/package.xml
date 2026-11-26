@@ -22,6 +22,9 @@
   <exec_depend>moveit_planners_ompl</exec_depend>
   <exec_depend>moveit_kinematics</exec_depend>
   <exec_depend>moveit_simple_controller_manager</exec_depend>
+  <!-- occupancy_map_monitor/PointCloudOctomapUpdater, which sensors_3d.yaml
+       loads in real_execution.launch.py -->
+  <exec_depend>moveit_ros_perception</exec_depend>
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>joint_trajectory_controller</exec_depend>

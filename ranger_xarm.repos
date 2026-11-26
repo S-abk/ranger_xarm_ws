@@ -31,8 +31,8 @@ repositories:
   # the workspace builds without needing apt. Only its
   # joint_state_topic_hardware_interface package is used.
   #
-  # Pinned to the 1.1.0 release, the one Jazzy's apt package is built from,
-  # not to main: main adds joint_command_topic_hardware_interface, which
+  # Pinned to the 1.1.0 release (Jazzy's apt package was built from it then;
+  # it is at 1.2.0 now), not to main: main adds joint_command_topic_hardware_interface, which
   # needs a control_msgs newer than Jazzy's (control_msgs/msg/JointCommand),
   # so a plain `colcon build` fails on it and aborts everything else.
   # joint_state_topic_hardware_interface is identical in the two apart from

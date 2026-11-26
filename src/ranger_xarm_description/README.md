@@ -14,21 +14,15 @@ ROS 2 Jazzy description for the Ranger Mini V3 + xArm6 assembly, generated from 
 - Default-on 15-inch laptop collision envelope.
 - Launch file permanently uses `ParameterValue(..., value_type=str)` for `robot_description` on Jazzy.
 
-## Replace your phase-1 package
+## Build
 
-Copy this directory to:
-
-```bash
-~/ros2_ws/src/ranger_xarm_description
-```
-
-Then rebuild:
+This package is built as part of the workspace: follow the quick start in
+the top-level `README.md`. To rebuild only this package there:
 
 ```bash
-cd ~/ros2_ws
+cd ~/ranger_xarm_ws
 source /opt/ros/jazzy/setup.bash
-rm -rf build/ranger_xarm_description install/ranger_xarm_description
-colcon build --symlink-install --packages-select ranger_xarm_description
+colcon build --packages-select ranger_xarm_description
 source install/setup.bash
 ```
 

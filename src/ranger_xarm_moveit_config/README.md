@@ -1,34 +1,19 @@
 # ranger_xarm_moveit_config
 
-Planning-only MoveIt 2 configuration for the validated Ranger Mini V3 + xArm6 robot description on ROS 2 Jazzy.
+MoveIt 2 configuration for the validated Ranger Mini V3 + xArm6 robot description on ROS 2 Jazzy: planning only (`planning_demo.launch.py`), mock execution (`fake_execution.launch.py`) and the real arm (`real_hardware_check.launch.py`, `real_execution.launch.py`).
 
 ## Design choices
 
 - The full Ranger/custom geometry stays inside `robot_description`, so MoveIt sees the chassis, pedestal, gantry, sensors, and default laptop as robot collision geometry.
 - Planning group `xarm6` is the chain from `xarm_link_base` to `xarm_link_tcp`.
 - The xArm gripper is a separate `xarm_gripper` group driven by `xarm_drive_joint`; its mimic joints remain passive.
-- The initial phase intentionally sets `allow_trajectory_execution: false`. This lets us validate planning and collision avoidance without commanding hardware.
+- `planning_demo.launch.py` sets `allow_trajectory_execution: false`, to validate planning and collision avoidance without commanding anything; `fake_execution.launch.py` and `real_execution.launch.py` set it `true`.
 - OMPL RRTConnect is the intended first planner; PRM and RRT* are also exposed.
 - KDL provides the first IK implementation. We can swap to a faster/analytic solver later without changing the robot description.
 
 ## Install/build
 
-Place this package beside `ranger_xarm_description` in `~/ros2_ws/src`.
-
-```bash
-cd ~/ros2_ws
-source /opt/ros/jazzy/setup.bash
-rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install --packages-select ranger_xarm_description ranger_xarm_moveit_config
-source install/setup.bash
-```
-
-If MoveIt is not already installed, rosdep should pull the package dependencies. The typical binary install is also:
-
-```bash
-sudo apt update
-sudo apt install ros-jazzy-moveit
-```
+This package is built as part of the workspace: follow the quick start in the top-level `README.md`, which resolves its dependencies with rosdep. Note that `ros-jazzy-moveit` alone does not include `moveit_ros_perception`, which `real_execution.launch.py` needs for the lidar octomap; rosdep installs it from this package's manifest.
 
 ## Launch the planning-only demo
 
@@ -84,9 +69,9 @@ Or temporarily remove the laptop from the robot collision model:
 ros2 launch ranger_xarm_moveit_config planning_demo.launch.py use_laptop_collision:=false
 ```
 
-## Next phase
+## Execution
 
-Once collision-aware planning is validated, phase 4 should replace `allow_trajectory_execution: false` with UFACTORY's Jazzy ros2_control/trajectory controller path for the real xArm. The Ranger driver should remain a separate hardware/control stack that shares the same `base_link`/TF model rather than owning this MoveIt description.
+`real_execution.launch.py` executes through UFACTORY's Jazzy ros2_control hardware interface and trajectory controllers for the real xArm. The Ranger driver remains a separate hardware/control stack that shares the same TF model rather than owning this MoveIt description.
 
 ---
 

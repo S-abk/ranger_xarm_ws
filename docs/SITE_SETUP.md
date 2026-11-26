@@ -29,10 +29,21 @@ OUSTER_HOST   =
 HOST_IP       = 
 IFACE         = 
 CAN_DEV       = can0
-RPLIDAR_PORT  = /dev/ttyUSB0
+RPLIDAR_PORT  = /dev/rplidar_a1
 ```
 
+(`/dev/rplidar_a1` and `can0` are the launch defaults. The RPLIDAR default
+assumes a udev rule that names the device, which is not part of this
+repository; without one, use its `/dev/serial/by-id/...` path.)
+
 ## 2. Host prerequisites
+
+**Drivers.** The base, lidar and camera drivers, and where each comes
+from, are in the README under
+[Hardware dependencies](../README.md#hardware-dependencies). With the
+workspace chain you launch from sourced, `python3 tools/deps/deps.py check
+hardware` lists anything missing and which workspace each driver is found
+in; it starts nothing.
 
 **UDP receive buffers.** Without these the kernel silently drops lidar packets
 and the sensor reads as roughly half rate. Symptom: `RcvbufErrors` climbing in
@@ -191,9 +202,11 @@ takes whichever arrived last and the symptom looks like a bad sensor.
 kinematic chain is never exercised. Passing that rung does not mean planning
 will work.
 
-**In `display.launch.py` there is no `base_footprint`.** It is published at
-runtime by `robot.launch.py`, not defined in the URDF. Set RViz's Fixed Frame
-to `base_link` or you get an empty view.
+**In `display.launch.py` RViz starts with its default Fixed Frame, `map`,
+which nothing publishes.** Set it to `base_footprint` or `base_link` or you
+get an empty view. Both are in the URDF: `base_footprint` is the robot's
+root link (welded under a `world` link by default) and `base_link` hangs
+below it.
 
 **The gripper's initial state is assumed, not measured** —
 `xarm_drive_joint = 0.0`. If it is physically elsewhere, MoveIt's model is

@@ -1,0 +1,39 @@
+# Drivers the physical robot needs that no rosdep rule supplies. Simulation
+# does not need any of this; see "Running the physical robot" in README.md.
+#
+# Use it ONE of two ways, never both on the same machine:
+#   a) a separate driver workspace, built and sourced before this one:
+#        mkdir -p ~/ranger_drivers_ws/src && cd ~/ranger_drivers_ws
+#        vcs import --recursive src < ~/ranger_xarm_ws/ranger_xarm_hardware.repos
+#   b) no driver workspace at all: import into this workspace's src/.
+# Doing b) on top of a driver workspace that already has these packages puts
+# two copies on the path, and whichever is found first wins.
+#   python3 tools/deps/deps.py check hardware
+# reports where each driver is found and warns about duplicates.
+#
+# The other run-time packages of the hardware launch files come from apt
+# through rosdep (ouster_ros, realsense2_camera, robot_localization).
+#
+# PROVISIONAL: every pin below. They are the commits this workspace was
+# built against, not yet confirmed against the robot's own driver
+# workspaces. The base driver pin will move when its pending branch merges.
+repositories:
+  # ranger_base and ranger_msgs: the Ranger CAN driver. A fork, because the
+  # vendor's jazzy branch does not support the Ranger Mini V3. Also builds
+  # four packages this workspace does not use (ranger_bringup,
+  # ranger_mini_v3_description, ranger_mini_v3_sim,
+  # ranger_mini_v3_sim_messenger).
+  ranger_ros2:
+    type: git
+    url: https://github.com/S-abk/ranger_ros2.git
+    version: bf6d1d6767a2b81517c59e8978d3c9201811742d  # PROVISIONAL: branch jazzy; moves when the pending driver branch merges
+  # ugv_sdk: the vendor's CAN SDK that ranger_base builds on.
+  ugv_sdk:
+    type: git
+    url: https://github.com/agilexrobotics/ugv_sdk.git
+    version: f2704eacdc90357078cd93ec60aae08bb4baab35  # PROVISIONAL: the commit on the robot's computer is not confirmed
+  # sllidar_ros2: the RPLIDAR A1 driver.
+  sllidar_ros2:
+    type: git
+    url: https://github.com/Slamtec/sllidar_ros2.git
+    version: 34300099fadfc772965962dec837bf436706188f  # PROVISIONAL: the commit on the robot's computer is not known
