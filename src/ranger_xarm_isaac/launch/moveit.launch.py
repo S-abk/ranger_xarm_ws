@@ -43,9 +43,15 @@ def _load_yaml(path):
         return yaml.safe_load(f)
 
 
+def _true(context, name):
+    return LaunchConfiguration(name).perform(context).lower() in ('true', '1', 'yes')
+
+
 def launch_setup(context, *args, **kwargs):
     add_gripper = LaunchConfiguration('add_gripper').perform(context)
     planning_margin = LaunchConfiguration('planning_margin').perform(context)
+    drive_base = _true(context, 'drive_base')
+    obstacle_map = _true(context, 'obstacle_map')
 
     moveit_pkg = Path(get_package_share_directory('ranger_xarm_moveit_config'))
     isaac_pkg = Path(get_package_share_directory('ranger_xarm_isaac'))
@@ -63,6 +69,13 @@ def launch_setup(context, *args, **kwargs):
     # clearance that the discrete collision checks cannot guarantee;
     # robot_state_publisher, the controllers and the simulator keep the
     # true geometry. move_group does not publish this description.
+    #
+    # drive_base:=true matches the simulators' drive_base:=true (sim.launch.py,
+    # control.launch.py): wheels on, base not welded, the description rooted at
+    # base_footprint, whose pose wheel odometry publishes as odom -> base_footprint.
+    # move_group then loads the driven-base semantic description (the shipped one
+    # plus a planar virtual joint odom -> base_footprint) and plans in odom.
+    drive_args = [' use_wheels:=true fix_base_to_world:=false'] if drive_base else []
     robot_description = {
         'robot_description': ParameterValue(Command([
             'xacro ', xacro_file,
@@ -70,11 +83,29 @@ def launch_setup(context, *args, **kwargs):
             ' add_gripper:=', add_gripper,
             ' xarm_load_gazebo_plugin:=false',
             ' planning_margin:=', planning_margin,
-        ]), value_type=str)
+        ] + drive_args), value_type=str)
     }
 
-    srdf = (moveit_pkg / 'config' / 'ranger_xarm.srdf').read_text(encoding='utf-8')
+    srdf_name = 'ranger_xarm_mobile_base.srdf' if drive_base else 'ranger_xarm.srdf'
+    srdf = (moveit_pkg / 'config' / srdf_name).read_text(encoding='utf-8')
     joint_limits = _load_yaml(moveit_pkg / 'config' / 'joint_limits.yaml')
+
+    # obstacle_map:=true: the lidar obstacle map, wired as on the real robot
+    # (real_execution.launch.py): /ouster/points -> trusted-volume filter (zones
+    # off, as shipped) -> /ouster/points_moveit -> move_group's octomap. Same
+    # sensors_3d.yaml and trusted_manipulation_volume.yaml, unchanged. move_group
+    # keeps the map in its planning frame (odom with drive_base:=true).
+    sensors = [_load_yaml(moveit_pkg / 'config' / 'sensors_3d.yaml')] if obstacle_map else []
+    trusted_volume_filter = Node(
+        package='ranger_xarm_moveit_config',
+        executable='trusted_manipulation_volume_filter.py',
+        name='trusted_manipulation_volume_filter', output='screen',
+        parameters=[{
+            'config_file': str(moveit_pkg / 'config' / 'trusted_manipulation_volume.yaml'),
+            'enabled_at_startup': False,
+            'use_sim_time': True,
+        }],
+    )
 
     move_group = Node(
         package='moveit_ros_move_group', executable='move_group',
@@ -89,6 +120,7 @@ def launch_setup(context, *args, **kwargs):
             {'planning_pipelines': ['ompl'],
              'default_planning_pipeline': 'ompl',
              'ompl': _load_yaml(moveit_pkg / 'config' / 'ompl_planning.yaml')},
+            *sensors,
             {'planning_scene_monitor': {
                 'publish_planning_scene': True,
                 'publish_geometry_updates': True,
@@ -117,13 +149,21 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
-    return [move_group, rviz]
+    return [move_group, rviz] + ([trusted_volume_filter] if obstacle_map else [])
 
 
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('add_gripper', default_value='true'),
         DeclareLaunchArgument('start_rviz', default_value='false'),
+        DeclareLaunchArgument(
+            'drive_base', default_value='false',
+            description='Set true when the simulator drives the base (sim.launch.py or '
+                        'control.launch.py drive_base:=true): MoveIt then plans in odom.'),
+        DeclareLaunchArgument(
+            'obstacle_map', default_value='false',
+            description='Feed the simulated Ouster cloud into MoveIt\'s obstacle map, through '
+                        'the trusted-volume filter, as on the real robot. Off by default.'),
         DeclareLaunchArgument(
             'planning_margin', default_value='0.005',
             description='Per-side inflation (m) of fixed-structure collision boxes in '
