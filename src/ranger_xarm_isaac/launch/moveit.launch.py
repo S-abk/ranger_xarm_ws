@@ -52,6 +52,7 @@ def launch_setup(context, *args, **kwargs):
     planning_margin = LaunchConfiguration('planning_margin').perform(context)
     drive_base = _true(context, 'drive_base')
     obstacle_map = _true(context, 'obstacle_map')
+    planning_frame = LaunchConfiguration('planning_frame').perform(context)
 
     moveit_pkg = Path(get_package_share_directory('ranger_xarm_moveit_config'))
     isaac_pkg = Path(get_package_share_directory('ranger_xarm_isaac'))
@@ -74,7 +75,8 @@ def launch_setup(context, *args, **kwargs):
     # control.launch.py): wheels on, base not welded, the description rooted at
     # base_footprint, whose pose wheel odometry publishes as odom -> base_footprint.
     # move_group then loads the driven-base semantic description (the shipped one
-    # plus a planar virtual joint odom -> base_footprint) and plans in odom.
+    # plus a planar virtual joint odom -> base_footprint) and plans in odom; with
+    # planning_frame:=base_footprint it keeps the shipped one and plans on the base.
     drive_args = [' use_wheels:=true fix_base_to_world:=false'] if drive_base else []
     robot_description = {
         'robot_description': ParameterValue(Command([
@@ -86,7 +88,8 @@ def launch_setup(context, *args, **kwargs):
         ] + drive_args), value_type=str)
     }
 
-    srdf_name = 'ranger_xarm_mobile_base.srdf' if drive_base else 'ranger_xarm.srdf'
+    srdf_name = ('ranger_xarm_mobile_base.srdf' if drive_base and planning_frame == 'odom'
+                 else 'ranger_xarm.srdf')
     srdf = (moveit_pkg / 'config' / srdf_name).read_text(encoding='utf-8')
     joint_limits = _load_yaml(moveit_pkg / 'config' / 'joint_limits.yaml')
 
@@ -160,6 +163,11 @@ def generate_launch_description():
             'drive_base', default_value='false',
             description='Set true when the simulator drives the base (sim.launch.py or '
                         'control.launch.py drive_base:=true): MoveIt then plans in odom.'),
+        DeclareLaunchArgument(
+            'planning_frame', default_value='odom', choices=['odom', 'base_footprint'],
+            description='With drive_base:=true: odom (planar virtual joint; the obstacle map '
+                        'stays put in the world) or base_footprint (the map moves with the robot). '
+                        'Ignored without drive_base (plans in world).'),
         DeclareLaunchArgument(
             'obstacle_map', default_value='false',
             description='Feed the simulated Ouster cloud into MoveIt\'s obstacle map, through '

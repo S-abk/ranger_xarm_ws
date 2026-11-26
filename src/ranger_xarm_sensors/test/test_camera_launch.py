@@ -305,6 +305,21 @@ def test_robot_welds_the_base_exactly_when_the_base_is_off(robot, enable_base, w
     assert len(driver) == (1 if enable_base == 'true' else 0)
 
 
+@pytest.mark.parametrize('given_frame', [None, 'odom', 'base_footprint'])
+def test_robot_passes_the_planning_frame_choice_to_moveit(robot, given_frame):
+    """planning_frame reaches MoveIt's launch unchanged; odom when not given."""
+    args = {**BASE_ARGS, **OTHERS_OFF, 'enable_base': 'true',
+            'enable_gantry_d455': 'false', 'enable_wrist_d435': 'false'}
+    if given_frame:
+        args['planning_frame'] = given_frame
+    result, context = run(robot, args)
+    moveit = [i for i in result.skipped
+              if result.locations[i].endswith('real_execution.launch.py')]
+    sub = lambda x: perform_substitutions(context, normalize_to_list_of_substitutions(x))
+    given = {sub(k): sub(v) for k, v in moveit[0].launch_arguments}
+    assert given['planning_frame'] == (given_frame or 'odom')
+
+
 def test_robot_moveit_still_launches_with_cameras_off_and_on(robot):
     """Walk MoveIt's own launch too: the description must expand without a camera.
 

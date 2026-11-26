@@ -6,8 +6,8 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
-from launch.substitutions import (Command, FileContent, IfElseSubstitution, LaunchConfiguration,
-                                  PathJoinSubstitution)
+from launch.substitutions import (Command, EqualsSubstitution, FileContent, IfElseSubstitution,
+                                  LaunchConfiguration, PathJoinSubstitution)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -26,6 +26,7 @@ def generate_launch_description():
     start_rviz = LaunchConfiguration('start_rviz')
     trusted_volume_enabled = LaunchConfiguration('trusted_volume_enabled')
     fix_base_to_world = LaunchConfiguration('fix_base_to_world')
+    planning_frame = LaunchConfiguration('planning_frame')
 
     description_xacro = PathJoinSubstitution([
         FindPackageShare('ranger_xarm_description'), 'urdf', 'ranger_xarm.urdf.xacro'
@@ -63,13 +64,17 @@ def generate_launch_description():
         pkg / 'config' / 'trusted_manipulation_volume.yaml'
     )
     # Welded base: the shipped semantic description, planning frame world. Base pose published
-    # by the driver or the filter (fix_base_to_world:=false): the generated one with a planar
-    # virtual joint odom -> base_footprint, so MoveIt plans in odom and its obstacle map (kept in
-    # the planning frame) stays put while the base drives.
+    # by the driver or the filter (fix_base_to_world:=false):
+    #   planning_frame:=odom (default) -- the generated one with a planar virtual joint
+    #     odom -> base_footprint: MoveIt plans in odom and its obstacle map (kept in the
+    #     planning frame) stays put while the base drives;
+    #   planning_frame:=base_footprint -- the shipped one: MoveIt plans in base_footprint, the
+    #     map moves with the robot and does not depend on odometry.
+    shipped_srdf = str(pkg / 'config' / 'ranger_xarm.srdf')
     robot_description_semantic = {'robot_description_semantic': ParameterValue(FileContent(
-        IfElseSubstitution(fix_base_to_world,
-                           str(pkg / 'config' / 'ranger_xarm.srdf'),
-                           str(pkg / 'config' / 'ranger_xarm_mobile_base.srdf'))), value_type=str)}
+        IfElseSubstitution(fix_base_to_world, shipped_srdf, IfElseSubstitution(
+            EqualsSubstitution(planning_frame, 'odom'),
+            str(pkg / 'config' / 'ranger_xarm_mobile_base.srdf'), shipped_srdf))), value_type=str)}
     robot_description_kinematics = {
         'robot_description_kinematics': _load_yaml(pkg / 'config' / 'kinematics.yaml')
     }
@@ -245,6 +250,15 @@ def generate_launch_description():
                 'false: the base driver or the filter publishes odom -> base_footprint; the '
                 'description is rooted at base_footprint and MoveIt plans in odom. '
                 'ranger_xarm_sensors robot.launch.py sets this from enable_base.'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'planning_frame', default_value='odom', choices=['odom', 'base_footprint'],
+            description=(
+                'With the base free (fix_base_to_world:=false): odom plans in the odometry frame '
+                'through a planar virtual joint, so the obstacle map stays put while the base '
+                'drives; base_footprint plans on the base, so the map moves with the robot and '
+                'does not depend on odometry. Ignored while the base is welded (plans in world).'
             ),
         ),
         DeclareLaunchArgument(

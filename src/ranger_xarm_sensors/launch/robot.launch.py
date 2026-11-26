@@ -155,6 +155,7 @@ def generate_launch_description():
             'laptop_open_angle_deg': lc('laptop_open_angle_deg'),
             'start_rviz': lc('start_rviz'),
             'fix_base_to_world': IfElseSubstitution(lc('enable_base'), 'false', 'true'),
+            'planning_frame': lc('planning_frame'),
         }.items(),
     )
 
@@ -254,6 +255,12 @@ def generate_launch_description():
         DeclareLaunchArgument('can_device', default_value='can0'),
         DeclareLaunchArgument('update_rate', default_value='50'),
         DeclareLaunchArgument('publish_odom_tf', default_value='true'),
+        DeclareLaunchArgument(
+            'planning_frame', default_value='odom', choices=['odom', 'base_footprint'],
+            description='With the base on: where MoveIt plans. odom keeps the obstacle map in '
+                        'the world (needs good odometry); base_footprint keeps it on the robot '
+                        '(no odometry needed; valid only while the base stands still). '
+                        'See real_execution.launch.py.'),
         DeclareLaunchArgument('enable_deadman', default_value='true'),
         DeclareLaunchArgument('deadman_timeout', default_value='0.35'),
         DeclareLaunchArgument('max_linear_x', default_value='0.25'),
