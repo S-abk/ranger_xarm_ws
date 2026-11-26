@@ -282,9 +282,9 @@ def test_robot_with_both_cameras_off_needs_no_serial_and_starts_no_camera(robot)
     moveit = [i for i in result.skipped
               if result.locations[i].endswith('real_execution.launch.py')]
     assert len(moveit) == 1 and moveit[0].condition is None
-    # The unconditional static transform is the only process left.
-    assert [(n.node_package, n.node_executable) for n in result.processes] == [
-        ('tf2_ros', 'static_transform_publisher')]
+    # No process is left: base_footprint -> base_link comes from the description
+    # (robot_state_publisher, inside MoveIt's launch), not from a second publisher.
+    assert [(n.node_package, n.node_executable) for n in result.processes] == []
 
 
 def test_robot_moveit_still_launches_with_cameras_off_and_on(robot):

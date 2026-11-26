@@ -21,6 +21,12 @@ def generate_launch_description():
     xacro_file = PathJoinSubstitution([
         FindPackageShare('ranger_xarm_description'), 'urdf', 'ranger_xarm.urdf.xacro'
     ])
+    # The driver below always publishes odom -> base_footprint, so the base is
+    # never welded to world here: the description is rooted at base_footprint.
+    # base_footprint -> base_link is a fixed joint of the description, published
+    # by robot_state_publisher; there is no second publisher of it.
+    # Base only. For arm and base together use ranger_xarm_sensors robot.launch.py:
+    # running this beside real_execution.launch.py starts two robot_state_publishers.
     robot_description_content = Command([
         'xacro ', xacro_file,
         ' use_xarm:=', use_xarm,
@@ -28,6 +34,7 @@ def generate_launch_description():
         ' use_static_collision:=true',
         ' use_laptop_collision:=true',
         ' laptop_open_angle_deg:=90.0',
+        ' fix_base_to_world:=false',
     ])
     robot_description = {
         'robot_description': ParameterValue(robot_description_content, value_type=str)
@@ -80,21 +87,6 @@ def generate_launch_description():
             executable='robot_state_publisher',
             output='screen',
             parameters=[robot_description],
-        ),
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='base_footprint_to_base_link',
-            arguments=[
-                '--x', '0',
-                '--y', '0',
-                '--z', '0.327028595',
-                '--roll', '0',
-                '--pitch', '0',
-                '--yaw', '0',
-                '--frame-id', 'base_footprint',
-                '--child-frame-id', 'base_link',
-            ],
         ),
         ranger_driver,
         deadman,

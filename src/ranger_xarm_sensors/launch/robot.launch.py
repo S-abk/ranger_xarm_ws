@@ -34,7 +34,7 @@ from launch.actions import (DeclareLaunchArgument, GroupAction,
 from launch.conditions import IfCondition
 from launch.launch_description_sources import (AnyLaunchDescriptionSource,
                                                PythonLaunchDescriptionSource)
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import IfElseSubstitution, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -137,6 +137,13 @@ def generate_launch_description():
 
     # The xArm + MoveIt stack owns the single robot_state_publisher for the
     # complete URDF. Nothing else here may start a second one.
+    #
+    # The base is welded to world exactly when the base is off. With
+    # enable_base:=true something publishes odom -> base_footprint (the driver,
+    # or with publish_odom_tf:=false the filter in ranger_xarm_bringup
+    # ekf_odom_imu.launch.py, which must then be started), so the description is
+    # rooted at base_footprint and MoveIt plans in odom. A welded description
+    # beside that publisher would give base_footprint two parents.
     xarm_moveit = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([
             FindPackageShare('ranger_xarm_moveit_config'),
@@ -147,6 +154,7 @@ def generate_launch_description():
             'gripper_initial_position': lc('gripper_initial_position'),
             'laptop_open_angle_deg': lc('laptop_open_angle_deg'),
             'start_rviz': lc('start_rviz'),
+            'fix_base_to_world': IfElseSubstitution(lc('enable_base'), 'false', 'true'),
         }.items(),
     )
 
@@ -169,17 +177,9 @@ def generate_launch_description():
         }.items(),
     )
 
-    # base_footprint is the lowest wheel-tread point; base_link is the CAD
-    # reference. They are different frames -- do not collapse them to fix a
-    # visual offset.
-    base_footprint_to_base_link = Node(
-        package='tf2_ros', executable='static_transform_publisher',
-        name='base_footprint_to_base_link',
-        arguments=['--x', '0', '--y', '0', '--z', '0.327028595',
-                   '--roll', '0', '--pitch', '0', '--yaw', '0',
-                   '--frame-id', 'base_footprint',
-                   '--child-frame-id', 'base_link'],
-    )
+    # base_footprint -> base_link (base_footprint on the ground, base_link the
+    # CAD reference 0.327 m above; different frames) is a fixed joint of the
+    # description, so robot_state_publisher publishes it. No second publisher.
 
     # Relays /cmd_vel_remote to /cmd_vel and publishes zero after the timeout,
     # so a dropped teleop link stops the base instead of leaving it driving.
@@ -291,7 +291,6 @@ def generate_launch_description():
 
         xarm_moveit,
         ranger_driver,
-        base_footprint_to_base_link,
         deadman,
         rplidar,
         ouster,
