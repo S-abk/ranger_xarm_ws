@@ -9,14 +9,18 @@ host runs the simulation; a 40 s wall-time cap per segment is only a safety
 limit.
 
 ```bash
-colcon build --packages-up-to ranger_xarm_gazebo
+colcon build --packages-up-to ranger_xarm_gazebo ranger_xarm_isaac
 tools/smoke_test/gazebo.sh          # or: gazebo.sh arm | gazebo.sh base
 ```
+
+`ranger_xarm_isaac` is needed even without Isaac: the `arm` scenario's MoveIt
+checks use its `moveit.launch.py`, and fail with "no move_group" without it.
+The README's quick start builds both.
 
 | Scenario | Launch | Checks |
 | --- | --- | --- |
 | `arm` | `sim.launch.py` as shipped (base welded to the world), plus `ranger_xarm_isaac`'s `moveit.launch.py` | controllers active, `/joint_states`, `/clock`, arm reaches a pose, MoveIt plans and executes a joint goal and a pose goal |
-| `base` | `drive_base:=true sensors:=true` | the above, plus Ouster cloud and IMU, `/scan`, the colour image of each camera (gantry D455 and wrist D435, reported separately, both required), and forward / crab / spin-in-place each moving the base along the commanded axis (by `/ground_truth/odom`, with `/odom` beside it) |
+| `base` | `drive_base:=true sensors:=true` | controllers active, `/joint_states`, `/clock` and the arm move as in `arm` (no MoveIt), plus Ouster cloud and IMU, `/scan`, the colour image of each camera (gantry D455 and wrist D435, reported separately, both required), and forward / crab / spin-in-place each moving the base along the commanded axis (by `/ground_truth/odom`, with `/odom` beside it) |
 
 In Isaac Sim (about a minute and a half, plus Isaac's first-run shader
 compile):
