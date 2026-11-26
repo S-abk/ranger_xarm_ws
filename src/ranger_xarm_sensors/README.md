@@ -6,7 +6,7 @@ Validated/target hardware:
 - SLAMTEC RPLIDAR A1M8 -> `/scan`, frame `laser_frame`
 - Intel RealSense D455 (gantry, lens facing +X) -> `/camera/gantry_d455/...`
 - Intel RealSense D435 (xArm wrist, on the flange plate) -> `/camera/wrist_d435/...`
-- Ouster OS0 -> later phase
+- Ouster OS0 -> `/ouster/points`, `/ouster/imu`, through `ouster_ros`'s own `sensor.launch.xml` (`enable_ouster`, on by default)
 
 The robot-level mount frames come from `ranger_xarm_description`. Sensor drivers own only their internal sensor frame trees.
 

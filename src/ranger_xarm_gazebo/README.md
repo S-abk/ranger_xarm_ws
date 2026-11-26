@@ -11,7 +11,8 @@ ros2 launch ranger_xarm_gazebo sim.launch.py world:=/abs/path/to/your.sdf
 ## How it hooks up
 
 `ranger_xarm_description` carries **one** URDF, used by both simulation and
-hardware. Simulation flips three xacro arguments and changes nothing else:
+hardware. Simulation flips three xacro arguments to change the control
+backend:
 
 | Argument | Hardware | Simulation |
 | --- | --- | --- |
@@ -20,7 +21,10 @@ hardware. Simulation flips three xacro arguments and changes nothing else:
 | `xarm_ros2_control_params` | *(empty)* | generated controller yaml |
 
 All three default to the hardware values, so nothing changes for the real
-robot unless a launch file asks. Keeping one description is the point: a
+robot unless a launch file asks. Depending on its own arguments,
+`sim.launch.py` also sets `add_gripper`, `use_wheels`, `fix_base_to_world`,
+`gz_sensors` and `wheels_command_interface`, which switch optional parts of
+the same model on or off. Keeping one description is the point: a
 separate simulation URDF drifts, and the drift is invisible until a plan that
 worked in simulation collides on the robot.
 
@@ -114,9 +118,9 @@ Ouster height above floor          1.513 m vs 1.509 predicted, 4 mm
 ```
 
 BoxB is correct rather than missing: the A1M8 sits on the front deck and the
-platform's own superstructure blocks the rear-left. The positions match
-`ranger_xarm_isaac`'s obstacle flag exactly, so the same predictions apply to
-both and a disagreement between them is a real disagreement.
+platform's own superstructure blocks the rear-left. `ranger_xarm_isaac` has
+no copy of this world at present, so these predictions are checked in gz
+only.
 
 ### Where gz and Isaac differ
 
@@ -202,8 +206,8 @@ start runs between them; on the scored drive a wheel was on a bump for a
 quarter of the distance. `outdoor_terrain.sdf` is the realistic
 alternative: a Blender-built mesh from scanned ground and scanned stones
 (`models/outdoor_terrain`, `scripts/make_outdoor_terrain.py`), undulating
-everywhere, with no pattern to drive around, and the same mesh is Isaac's
-`--terrain`. `outdoor_terrain_room.sdf` adds walls for lidar odometry.
+everywhere, with no pattern to drive around. (Isaac has no terrain option at
+present.) `outdoor_terrain_room.sdf` adds walls for lidar odometry.
 
 **Error is not the same as drift.** The gz numbers above are from the
 empty world. The same legs run in `sensor_test.sdf` gave 1.94% and +2.29
@@ -253,7 +257,8 @@ that this simulation's controllers also use. `ranger_xarm_moveit_config`'s
 time with trajectory execution disabled.
 
 It does not give you real perception. `sensors:=true` simulates the Ouster,
-the D455, the D435 and the RPLIDAR (see below), but the returns are ideal geometry.
+the D455, the D435 and the RPLIDAR (see below), but the returns are ideal
+geometry, apart from 1 cm of Gaussian range noise on the Ouster.
 They do not have the return statistics of the physical sensors — grazing
 incidence dropouts, retroreflector blooming, dust, sunlight on the depth
 pair. A perception stack that works here has been shown to work against
