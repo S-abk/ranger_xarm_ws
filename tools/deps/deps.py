@@ -3,7 +3,8 @@
 
   deps.py report                 every package a manifest, launch file or
                                  xacro under src/ names, and where it comes
-                                 from; exit 1 if one comes from nowhere
+                                 from; exit 1 if one comes from nowhere,
+                                 2 if rosdep is not installed
   deps.py check TARGET           what TARGET starts that the sourced
                                  environment lacks; exit 1 if anything
   deps.py check PKG FILE         the same for one launch file
@@ -17,6 +18,7 @@ import argparse
 import ast
 import os
 import re
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -378,6 +380,11 @@ def main():
                     help='workspace root for report (default: this checkout)')
     a = ap.parse_args()
     if a.mode == 'report':
+        if shutil.which('rosdep') is None:
+            print('rosdep is missing: report resolves every key through it. Install it '
+                  '(apt install python3-rosdep, then rosdep init and rosdep update) and run again.',
+                  file=sys.stderr)
+            return 2
         return report(a.ws.resolve())
     if len(a.target) == 1 and a.target[0] in TARGETS:
         return check(TARGETS[a.target[0]])
