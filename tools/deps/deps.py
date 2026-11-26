@@ -48,8 +48,11 @@ RUN_TAGS = ('depend', 'exec_depend')
 SHARE_FUNCS = ('FindPackageShare', 'get_package_share_directory')
 FIND_RE = re.compile(r'\$\(find(?:-pkg-share)? ([A-Za-z0-9_]+)\)|package://([A-Za-z0-9_]+)')
 # A pluginlib class: in ros2_control and MoveIt YAML, and xacro arguments.
-PLUGIN_RE = re.compile(r'(?:\btype|plugin|sensor_plugin|kinematics_solver)\s*[:=]\s*'
+PLUGIN_RE = re.compile(r'(?:\btype|plugin|sensor_plugin|kinematics_solver)\s*:?=?\s*'
                        r'([A-Za-z0-9_]+/[A-Za-z0-9_]+)')
+# ...and in a launch file, any quoted 'package/ClassName', such as a module
+# constant holding the ros2_control plugin.
+QUOTED_CLASS_RE = re.compile(r'''['"]([a-z][a-z0-9_]*/[A-Z][A-Za-z0-9_]*)['"]''')
 
 
 def manifest_deps(xml, tags=DEP_TAGS):
@@ -110,7 +113,40 @@ def launch_refs(path):
                 refs.append(('unread', None, ast.unparse(n)[:100], c))
         if name == 'ExecuteProcess':
             refs.append(('unread', None, ast.unparse(n)[:100], c))
+    # Path(get_package_share_directory('p')) / 'a' / 'b', and the same with
+    # the share directory held in a variable first.
+    shares = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Assign) and len(n.targets) == 1 \
+                and isinstance(n.targets[0], ast.Name):
+            pkg = _share_call(n.value)
+            if pkg:
+                shares[n.targets[0].id] = pkg
+    inner = {id(n.left) for n in ast.walk(tree)
+             if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div)}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div) and id(n) not in inner:
+            parts, base = [], n
+            while isinstance(base, ast.BinOp) and isinstance(base.op, ast.Div):
+                parts.insert(0, base.right)
+                base = base.left
+            pkg = _share_call(base) or (shares.get(base.id) if isinstance(base, ast.Name) else None)
+            if not pkg:
+                continue
+            lits = [_str(p) for p in parts]
+            refs.append(('file', pkg, '/'.join(lits), cond.get(id(n))) if all(lits) else
+                        ('unread', None, ast.unparse(n)[:100], cond.get(id(n))))
     return refs
+
+
+def _share_call(node):
+    """The package of get_package_share_directory('p') or
+    Path(get_package_share_directory('p')), else None."""
+    if isinstance(node, ast.Call) and _name(node) == 'Path' and node.args:
+        node = node.args[0]
+    if isinstance(node, ast.Call) and _name(node) in SHARE_FUNCS and node.args:
+        return _str(node.args[0])
+    return None
 
 
 # ---------------------------------------------------------------- report
@@ -187,7 +223,7 @@ def report(ws):
             src = f'{rf}: {d} @ {info["version"][:12]}' + \
                   (' **PROVISIONAL**' if info['provisional'] else '')
         elif pkg in mans:
-            src = 'in src/, but in no .repos file of this repository'
+            src, bad = '**in src/, but in no .repos file of this repository**', bad + 1
         elif pkg in NOT_NEEDED:
             src = f'not needed: {NOT_NEEDED[pkg]}'
         else:
@@ -258,7 +294,7 @@ def check(entries):
                 for cls in PLUGIN_RE.findall(y.read_text(errors='replace')):
                     plugins.setdefault(cls, set()).add(f'{pkg}/{y.name}')
         text = path.read_text(errors='replace')
-        for cls in PLUGIN_RE.findall(text):
+        for cls in PLUGIN_RE.findall(text) + QUOTED_CLASS_RE.findall(text):
             plugins.setdefault(cls, set()).add(by)
         for kind, p, detail, cond in launch_refs(path):
             when = f'{by}, when {cond}' if cond else by
