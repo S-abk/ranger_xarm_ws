@@ -16,6 +16,8 @@
   <!-- lidar_odometry:=true in ekf_odom_imu.launch.py; built from source,
        see ranger_xarm.repos -->
   <exec_depend>kiss_icp</exec_depend>
+  <!-- ekf_node in ekf_odom_imu.launch.py -->
+  <exec_depend>robot_localization</exec_depend>
   <exec_depend>ranger_msgs</exec_depend>
   <exec_depend>ranger_xarm_description</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
