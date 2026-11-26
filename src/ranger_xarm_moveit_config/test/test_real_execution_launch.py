@@ -100,3 +100,16 @@ def test_description_command_ends_with_the_weld(args):
     params, context = move_group_params({**BASE, **args})
     text = command_text(params, context)
     assert text.split()[-2:] == ['fix_base_to_world:=true', 'planning_margin:=0.005'], text
+
+
+@pytest.mark.parametrize('args', [{'fix_base_to_world': 'false'},
+                                  {'fix_base_to_world': 'false', 'planning_frame': 'base_footprint'}])
+def test_description_command_ends_with_the_free_base(args):
+    # base not welded: robot_state_publisher's description command ends with the free base
+    params, context = move_group_params({**BASE, **args}, 'robot_state_publisher')
+    text = command_text(params, context)
+    assert text.split()[-1] == 'fix_base_to_world:=false', text
+    # move_group's planning description: the same command, then only the planning margin
+    params, context = move_group_params({**BASE, **args})
+    text = command_text(params, context)
+    assert text.split()[-2:] == ['fix_base_to_world:=false', 'planning_margin:=0.005'], text
