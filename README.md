@@ -46,9 +46,11 @@ deployment. If you cloned before then, re-clone, or run
 `git fetch origin && git reset --hard origin/<branch>` on each branch;
 your old commits do not share history with the new ones.
 
-The **same URDF drives simulation and hardware.** Simulation changes three
-xacro arguments, not the model, so a fix made in simulation is a fix on the
-robot and there is no second description to drift out of step.
+The **same URDF drives simulation and hardware.** Simulation changes xacro
+arguments (the ros2_control plugin, the weld to the world, and optionally
+the wheels and simulated sensors), not the model, so a fix made in
+simulation is a fix on the robot and there is no second description to
+drift out of step.
 
 ---
 
@@ -58,16 +60,23 @@ bring-up rungs, and what a healthy system actually measures.
 
 ## Quick start (simulation, no hardware)
 
+On Ubuntu 24.04 with ROS 2 Jazzy installed and nothing else:
+
+<!-- fresh_clone: sim -->
 ```bash
-sudo apt install python3-colcon-common-extensions python3-vcstool
+sudo apt install git python3-colcon-common-extensions python3-rosdep python3-vcstool
+sudo rosdep init        # once per machine; it refuses if already done, which is fine
+rosdep update
 source /opt/ros/jazzy/setup.bash
 
 git clone <this repo> ~/ranger_xarm_ws
 cd ~/ranger_xarm_ws
-vcs import --recursive src < ranger_xarm.repos   # xarm_ros2 at a pinned commit
-rosdep install --from-paths src --ignore-src -r -y
+vcs import --recursive src < ranger_xarm.repos   # xarm_ros2 and two others, pinned
+PKGS="ranger_xarm_gazebo ranger_xarm_isaac"
+rosdep install -y --ignore-src --from-paths $(colcon list --packages-up-to $PKGS --paths-only) \
+    --skip-keys "ranger_base ranger_msgs"
 
-colcon build --packages-up-to ranger_xarm_gazebo
+colcon build --packages-up-to $PKGS
 source install/setup.bash
 
 ros2 launch ranger_xarm_gazebo sim.launch.py
@@ -75,9 +84,17 @@ ros2 launch ranger_xarm_gazebo sim.launch.py
 
 You should get a gz window with the platform on a ground plane, a populated
 `/joint_states`, and `joint_state_broadcaster` plus `xarm_xarm6_traj_controller`
-active. `--packages-up-to` builds the simulation path only. A plain `colcon
-build` builds everything, including the hardware packages, which need their
-drivers only at run time.
+active. `tools/smoke_test/gazebo.sh` checks all of that headless.
+
+This builds the simulation path only and installs no hardware driver.
+`ranger_xarm_isaac` is in it because MoveIt against gz (and the smoke test)
+uses its `moveit.launch.py`; for gz alone, `PKGS=ranger_xarm_gazebo` is
+enough. The `--skip-keys` is there because `ranger_xarm_isaac` depends on
+`ranger_xarm_bringup` for a Fast DDS profile file, and the bring-up package
+names the base driver, which simulation never starts. The real robot's
+drivers are a separate step: [Running the physical robot](#running-the-physical-robot).
+A plain `colcon build` builds everything, including the hardware packages,
+which need their drivers only at run time.
 
 Useful arguments:
 
@@ -101,13 +118,15 @@ One `/cmd_vel` twist covers every mode the platform has: `linear.x` drives,
 `linear.y` crabs, `angular.z` spins in place, and any mix arcs. There is no
 mode switch, because four-wheel independent steering does not need one.
 
-**The gripper needs a patch that is not in this repo.** It lives in a file
-`vcs import` pulls into `src/xarm_ros2/`, which is gitignored here, so a fresh
-clone does not have it and the finger linkage comes apart in simulation
-(the TF tree still looks correct — `robot_state_publisher` derives the mimic
-joints kinematically — so check the fingers in gz, not in RViz). See
-`docs/TODO.md`; upstream as
-[xarm_ros2#180](https://github.com/xArm-Developer/xarm_ros2/pull/180).
+**The gripper relies on a fork of xarm_ros2.** Its finger linkage holds
+together in gz only with one commit that declares the follower joints to
+ros2_control as mimic joints; `ranger_xarm.repos` pins a fork that carries
+it until upstream
+[xarm_ros2#180](https://github.com/xArm-Developer/xarm_ros2/pull/180)
+merges. If you point `ranger_xarm.repos` elsewhere, check the fingers in gz,
+not in RViz: the TF tree looks correct either way, because
+`robot_state_publisher` derives the mimic joints kinematically. See
+`docs/TODO.md`.
 
 Look at the model without a simulator at all:
 
@@ -165,8 +184,8 @@ licences.
 5.1.0). The USD is generated from the xacro, never
 committed; the arm, gripper and 4WIS base are driven through ros2_control's
 topic-based hardware interface (`topic_based_hardware_interfaces`, pulled by
-`ranger_xarm.repos`), and the Ouster OS0 (with its IMU), RPLIDAR A1M8 and
-D435 publish on the same topics and frames as the real drivers. Details and
+`ranger_xarm.repos`), and the Ouster OS0 (with its IMU), RPLIDAR A1M8, gantry
+D455 and wrist D435 publish on the same topics and frames as the real drivers. Details and
 pitfalls: `src/ranger_xarm_isaac/README.md`.
 
 Isaac Sim's scripts run under Isaac's own Python, not the system one. Point
@@ -229,18 +248,76 @@ trusting it there. To run with a rigid chassis instead, pass
 
 ## Running the physical robot
 
-The two hardware packages need drivers that are not in `ranger_xarm.repos`,
-because which ones you need depends on which sensors you have:
+### Hardware dependencies
 
-- `ranger_base`, `ranger_msgs` — AgileX Ranger CAN driver
-- `ouster_ros` — Ouster OS0
-- `realsense2_camera` — Intel RealSense D455 and D435
-- `sllidar_ros2` — RPLIDAR A1
+The two hardware packages need drivers that simulation does not, so they
+are a separate step from the quick start:
 
-With those in the workspace:
+| Package | For | Comes from |
+| --- | --- | --- |
+| `ranger_base`, `ranger_msgs` | the Ranger CAN driver | source, `ranger_xarm_hardware.repos` (a fork: the vendor's branch does not support the Mini V3) |
+| `ugv_sdk` | the vendor CAN SDK `ranger_base` builds on | source, `ranger_xarm_hardware.repos` |
+| `sllidar_ros2` | RPLIDAR A1 | source, `ranger_xarm_hardware.repos` |
+| `ouster_ros` | Ouster OS0 | apt through rosdep; see the version pin in [`docs/SITE_SETUP.md`](docs/SITE_SETUP.md) |
+| `realsense2_camera` | RealSense D455 and D435 | apt through rosdep |
+| `robot_localization` | the EKF (`ekf_odom_imu.launch.py`) | apt through rosdep |
+| `moveit_ros_perception` | MoveIt's octomap from the Ouster (`real_execution.launch.py`) | apt through rosdep |
+| `kiss_icp` | lidar odometry (`lidar_odometry:=true`) | source, `ranger_xarm.repos` (already fetched) |
+
+The pins in `ranger_xarm_hardware.repos` are provisional: they are the
+commits this workspace was built against, not yet confirmed against a
+robot's own driver workspaces.
+
+Install them **one** of two ways, never both on the same machine; with
+both, two copies of a driver are on the path and whichever comes first
+wins.
+
+**a) A separate driver workspace, sourced before this one** (what the
+robot's computer does):
+
+<!-- fresh_clone: hardware -->
+```bash
+source /opt/ros/jazzy/setup.bash
+mkdir -p ~/ranger_drivers_ws/src && cd ~/ranger_drivers_ws
+vcs import --recursive src < ~/ranger_xarm_ws/ranger_xarm_hardware.repos
+rosdep install -y --ignore-src --from-paths src --skip-keys "catkin ament_python"
+colcon build
+source install/setup.bash          # in every shell, before this workspace's
+
+cd ~/ranger_xarm_ws
+rosdep install -y --ignore-src --from-paths src
+colcon build
+source install/setup.bash
+python3 tools/deps/deps.py check hardware
+```
+
+**b) Everything in this workspace**, on a machine with no driver
+workspace:
+
+<!-- fresh_clone: hardware_single -->
+```bash
+source /opt/ros/jazzy/setup.bash
+cd ~/ranger_xarm_ws
+vcs import --recursive src < ranger_xarm_hardware.repos
+rosdep install -y --ignore-src --from-paths src --skip-keys "catkin ament_python"
+colcon build
+source install/setup.bash
+python3 tools/deps/deps.py check hardware
+```
+
+The two skipped keys are declared by the drivers' own manifests and need
+nothing installed (`ugv_sdk` names its ROS 1 build tool; one unused package
+of the base driver names its build type). The last line,
+[`tools/deps/deps.py check hardware`](tools/deps/README.md), reads the
+installed launch files and manifests and lists every package, program,
+file or plugin the hardware launch files need that is missing, with what
+needs it, and which workspace each driver was found in. Run it before the
+first launch on a new machine and after changing the workspace chain. It
+starts nothing.
+
+### Launching
 
 ```bash
-colcon build
 ros2 launch ranger_xarm_sensors robot.launch.py robot_ip:=<xarm controller ip> \
     ouster_sensor_hostname:=<ouster host> \
     gantry_d455_serial_no:=<digits> wrist_d435_serial_no:=<digits>
@@ -322,9 +399,11 @@ than at planning time.
 
 ## Conventions
 
-- No unit or integration test suites: validation here is launching nodes and
-  driving the robot, simulated or real. `colcon test` will report nothing
-  meaningful. `tools/smoke_test/` automates the simulated part: it brings the
+- Almost no unit tests: validation here is launching nodes and driving the
+  robot, simulated or real. The one `colcon test` target is
+  `ranger_xarm_sensors`'s test of the two cameras' launch descriptions,
+  which walks them without starting anything. `tools/smoke_test/` automates
+  the simulated part: it brings the
   robot up, drives it, moves the arm and checks the sensors, in about two
   minutes. `tools/moveit_test/` runs a fixed set of MoveIt goals, including
   some close to the gantry, and checks every planned path against the true
@@ -332,6 +411,16 @@ than at planning time.
 - Custom packages use `ament_cmake` with Python scripts installed via
   `install(PROGRAMS ...)`. **A new script must be added to `CMakeLists.txt` or
   it will not be installed to `lib/<pkg>/`** and the launch file will fail to
-  find it.
+  find it. Two scripts are deliberately not installed: they are tools run
+  from the source tree, and no launch file uses them.
+  `src/ranger_xarm_description/scripts/split_wheel_meshes.py` regenerates
+  the wheel meshes, and `src/ranger_xarm_gazebo/scripts/make_outdoor_terrain.py`
+  the outdoor terrain model (its docstring gives the Blender command line;
+  `split_wheel_meshes.py --help` lists its options).
+- `tools/fresh_clone/run.sh` proves that a commit goes from `git clone` to a
+  built, smoke-tested simulation on a bare Ubuntu 24.04 with ROS 2 Jazzy, by
+  running this README's own code blocks in a container (the blocks marked
+  `<!-- fresh_clone: ... -->`; keep the markers when editing them).
+  `tools/deps/deps.py report` lists where every external package comes from.
 - `build/`, `install/` and `log/` are colcon output and are gitignored. Never
   edit or commit into them.
