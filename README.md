@@ -382,7 +382,7 @@ set of options to pick from:
 
 **Open items, cause not established:**
 - Ground returns 3 m or more from the base were recorded 0.105–0.135 m high, and piled up at rest (up to 117 cells). It is not the chassis pitching: the measured pitch and roll explain only 3–16 % of them.
-- Once in twelve legs, one snapshot at the start of a leg held a displaced copy of the obstacle: 53 cells, 0.15–0.2 m from where the obstacle was relative to the robot. It was gone by the next snapshot.
+- While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs over four runs, and exceeded 50 in 2 of them (53 and 58); at rest they were 0 in every leg. The 53 were a displaced copy of the obstacle in one snapshot, 0.15–0.2 m from where it was relative to the robot, gone by the next; the 58 and the others were not examined.
 
 **Which planning frame to use** (`planning_frame` on `robot.launch.py`, `real_execution.launch.py` and the simulators' `moveit.launch.py`; it only matters while the base is running).
 
@@ -392,6 +392,8 @@ set of options to pick from:
 | `base_footprint` | on the robot | odometry is not trusted; what the lidar sees again within seconds of each stop is enough | obstacles seen only before the base moved must still be there after it stops: this map moves with the robot, and only fresh scans place things again |
 
 Either way, the arm plans and moves only with the base at rest (above). With the base off, both give `world`.
+
+At rest, in simulation, `base_footprint` placed the obstacle within 0.030 m and 0.034 m of where it was first mapped, in its two runs (the check's tolerance is 0.031 m), and MoveIt refused it in both.
 
 **On the real robot, use `planning_frame:=base_footprint` until the base driver's odometry fix has passed its hardware tests.** The wheel odometry has a known heading fault at sideways stops. A heading jump corrupts the `odom` map silently (next paragraph); the `base_footprint` map does not depend on odometry.
 
