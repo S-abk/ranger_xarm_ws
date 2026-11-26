@@ -37,7 +37,10 @@ def generate_launch_description():
         DeclareLaunchArgument('update_rate', default_value='50'),
         DeclareLaunchArgument('publish_odom_tf', default_value='true'),
         DeclareLaunchArgument('odom_frame', default_value='odom'),
-        DeclareLaunchArgument('base_frame', default_value='base_link'),
+        # base_footprint, the description's root when the base is not welded: odometry
+        # moves the root. base_link is the description's child of base_footprint, so a
+        # driver publishing odom -> base_link would give base_link two parents.
+        DeclareLaunchArgument('base_frame', default_value='base_footprint'),
         DeclareLaunchArgument('odom_topic', default_value='odom'),
         ranger,
     ])
