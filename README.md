@@ -378,11 +378,11 @@ set of options to pick from:
 
 **MoveIt plans and executes arm motion only with the base at rest, at least 2 s after it stops.**
 - What was shown, in simulation: 2 s after each stop, an obstacle's cells were within 0.03 m of where they were before the base drove 1 m out and back, and MoveIt refused the obstacle (`tools/smoke_test/obstacle_map.sh`).
-- What was not shown: that the map is right while the base moves. Over five runs of the same design, the worst count per run of stray cells off the obstacle while driving ranged from 18 to 136.
+- What was not shown: that the map is right while the base moves. Over six runs of the same design, all with `planning_frame:=odom`, the worst count per run of stray cells off the obstacle while driving ranged from 18 to 136. This count includes the far ground returns of the first open item below.
 
 **Open items, cause not established:**
 - Ground returns 3 m or more from the base were recorded 0.105–0.135 m high, and piled up at rest (up to 117 cells). It is not the chassis pitching: the measured pitch and roll explain only 3–16 % of them.
-- While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs over four runs, and exceeded 50 in 2 of them (53 and 58); at rest they were 0 in every leg. The 53 were a displaced copy of the obstacle in one snapshot, 0.15–0.2 m from where it was relative to the robot, gone by the next; the 58 and the others were not examined.
+- While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs, and exceeded 50 in 2 of them (53 and 58); at rest they were 0 in every leg. These were measured with `planning_frame:=odom`, in the last four of the six runs above, four legs each. Only those four runs recorded the far ground returns separately while driving, so the first two cannot be counted here. The 53 were a displaced copy of the obstacle in one snapshot, 0.15–0.2 m from where it was relative to the robot, gone by the next; the 58 and the others were not examined.
 
 **Which planning frame to use** (`planning_frame` on `robot.launch.py`, `real_execution.launch.py` and the simulators' `moveit.launch.py`; it only matters while the base is running).
 
@@ -393,7 +393,7 @@ set of options to pick from:
 
 Either way, the arm plans and moves only with the base at rest (above). With the base off, both give `world`.
 
-At rest, in simulation, `base_footprint` placed the obstacle within 0.030 m and 0.034 m of where it was first mapped, in its two runs (the check's tolerance is 0.031 m), and MoveIt refused it in both.
+At rest, in simulation, `planning_frame:=base_footprint` missed the check's first at-rest tolerance in one of its two runs: it placed the obstacle 0.0335 m from where it was first mapped, against 0.031 m, at the first stop. In the other run it stayed within 0.030 m. MoveIt refused the obstacle in both runs.
 
 **On the real robot, use `planning_frame:=base_footprint` until the base driver's odometry fix has passed its hardware tests.** The wheel odometry has a known heading fault at sideways stops. A heading jump corrupts the `odom` map silently (next paragraph); the `base_footprint` map does not depend on odometry.
 
