@@ -1,0 +1,96 @@
+# Mass properties of the base and of the structure on it: the one source of the inertial values
+# of ranger_cad_link, custom_structure_link and the wheel corners, and of the suspension's rest
+# settings. scripts/make_mass_properties.py writes urdf/mass_properties.generated.xacro from this
+# file; test/test_mass_properties.py fails if that file is not what this one produces.
+#
+# Nothing here is weighed. Sources: the owner's CAD model of the robot (part volumes and
+# positions, times the stated materials), the base's user manual, the 3D lidar's datasheet, the
+# battery pack's label, vendor data for the arm's control box.
+#
+# Frame: base_link (x forward, y left, z up). z_above_floor = base_link z + floor_to_base_link.
+# Inertia: the tensor elements, I = sum m (|r|^2 E - r r^T), so ixz = -sum m dx dz (the URDF
+# convention).
+
+floor_to_base_link: 0.327028595    # ground_z_nom in calibration.xacro; the test checks it
+
+base:
+  mass: 75.0
+  mass_basis: "base user manual: total weight including wheels"
+  com_x: 0.0
+  com_x_basis: "base user manual: within 2 mm of the middle fore and aft; taken as 0"
+  com_z_above_floor: 0.214
+  com_z_basis: "base user manual: centre of gravity 0.214 m above the floor"
+  # The manual's drawing puts the centre of gravity 14.9 mm to one side. Which side is a reading
+  # of the drawing, not stated in words: change lateral_side if a check on the robot says
+  # otherwise. right -> y = -lateral_offset, left -> y = +lateral_offset. The base's own battery
+  # sits on the right, as the manual says.
+  lateral_offset: 0.0149
+  lateral_side: right
+  lateral_basis: "base user manual, centre-of-gravity drawing; the side is read from the drawing; one measurement on the robot did not confirm it"
+  # The body link carries what the corner links do not. Its inertia is a solid box of the
+  # chassis collision envelope (static_geometry.xacro, wheels modelled), about the body's own
+  # centre. Without modelled wheels the body link carries the whole base, corners included.
+  body_box: [0.803706, 0.500020, 0.270360]
+  # The manual gives the track as 0.364 m; the description's wheel stations (below) give 0.3704.
+  # The geometry is left as it is.
+
+corners:
+  # Wheel stations and axle height as in ranger_wheels.xacro (the test checks them against the
+  # expanded description). Masses: estimates, no source; unchanged from the earlier description.
+  half_wheelbase: 0.2470
+  half_track: 0.1852
+  axle_z: -0.226992595             # ground_z_nom + wheel radius
+  wheel:
+    mass: 3.0
+    radius: 0.100036               # solid cylinder about its spin axis (y)
+    width: 0.070
+    basis: "estimate, no source"
+  knuckle:
+    mass: 1.0
+    com_z: 0.02                    # above the axle
+    inertia: [0.0015, 0.0015, 0.0020]
+    basis: "estimate, no source"
+  suspension_link:
+    mass: 0.3
+    inertia: [0.0002, 0.0002, 0.0002]
+    basis: "estimate, no source"
+
+suspension_rest:
+  # springReference = -setting, per axle (the spring stiffness and the droop limit are in
+  # ranger_wheels.xacro and do not change). Chosen so that base_link rests at its stated height
+  # with no pitch in gz: predicted from a linear-spring model at the rate gz was measured to
+  # behave with (front 0.0123, rear 0.0207), then each axle moved by its measured mean
+  # suspension deflection at rest, to the nearest 0.1 mm.
+  front: 0.0123
+  rear: 0.0204
+  basis: "trimmed in gz (empty_ground) from measured suspension positions"
+
+structure:
+  # Everything fixed to base_link that is not the base, the arm or the gripper. Each part is
+  # taken as centred in y. kg: nominal; range: [low, high] where the source gives one.
+  # shape: box [dx, dy, dz] | pair [dx, dy, dz, y]: two equal boxes at +-y | point
+  parts:
+    - {name: "pedestal columns, two 80 x 160 mm extrusions, 350 mm", kg: 8.37, x: 0.000, z_above_floor: 0.531, shape: box, dims: [0.160, 0.160, 0.350], basis: "CAD volume, aluminium"}
+    - {name: "pedestal base plate, 292 x 292 x 9.5 mm", kg: 6.37, x: 0.000, z_above_floor: 0.351, shape: box, dims: [0.292, 0.292, 0.0095], basis: "CAD volume, stainless steel"}
+    - {name: "arm mount plate, 203 x 203 x 12.7 mm", kg: 3.45, x: 0.000, z_above_floor: 0.712, shape: box, dims: [0.203, 0.203, 0.0127], basis: "CAD volume, stainless steel"}
+    - {name: "gantry uprights, two 40 x 80 mm extrusions, 1100 mm", kg: 7.27, x: -0.395, z_above_floor: 0.901, shape: pair, dims: [0.080, 0.040, 1.100, 0.220], basis: "CAD volume, aluminium"}
+    - {name: "gantry crossbar, 400 mm", kg: 1.32, x: -0.395, z_above_floor: 1.431, shape: box, dims: [0.080, 0.400, 0.040], basis: "CAD volume, aluminium"}
+    - {name: "3D lidar with cap, and its mount", kg: 1.05, x: -0.375, z_above_floor: 1.488, shape: point, basis: "datasheet (lidar with cap 0.522, mount 0.530)"}
+    - {name: "gantry camera and printed mount", kg: 0.17, x: -0.332, z_above_floor: 1.390, shape: point, range: [0.12, 0.25], basis: "estimate"}
+    - {name: "battery pack, 0.259 x 0.269 x 0.196 m", kg: 5.99, x: -0.289, z_above_floor: 0.453, shape: box, dims: [0.259, 0.269, 0.196], basis: "net weight from its label"}
+    - {name: "power mount, two printed side pieces", kg: 1.81, x: -0.317, z_above_floor: 0.348, shape: box, dims: [0.299, 0.510, 0.129], range: [1.6, 2.2], basis: "CAD volume, printed at 20 % infill; inertia as its envelope box"}
+    - {name: "power mount plate, 178 x 392 x 6 mm", kg: 0.49, x: -0.260, z_above_floor: 0.343, shape: box, dims: [0.178, 0.392, 0.006], basis: "CAD volume, acrylic"}
+    - {name: "arm control box", kg: 3.9, x: -0.260, z_above_floor: 0.619, shape: box, dims: [0.1286, 0.3073, 0.1434], basis: "vendor manual; inertia as its collision box"}
+    - {name: "laptop stand, printed", kg: 0.72, x: -0.202, z_above_floor: 0.672, shape: point, range: [0.6, 0.9], basis: "CAD volume, printed"}
+    - {name: "laptop", kg: 2.3, x: -0.295, z_above_floor: 0.731, shape: box, dims: [0.25, 0.36, 0.022], range: [1.6, 3.0], basis: "guess; inertia as a closed laptop"}
+    - {name: "front lidar and its mount", kg: 0.32, x: 0.271, z_above_floor: 0.357, shape: point, range: [0.25, 0.85], basis: "estimate"}
+    - {name: "fasteners, brackets, cables", kg: 1.0, x: -0.20, z_above_floor: 0.60, shape: point, range: [0.5, 2.0], basis: "allowance"}
+  # Parts of the list above that another link already carries (sensor_frames.xacro). They are
+  # taken out of custom_structure_link so that nothing is counted twice. com and inertia in
+  # base_link (the test checks them against the expanded description).
+  carried_elsewhere:
+    - link: gantry_d455_mount_link
+      part: "gantry camera and printed mount"
+      mass: 0.116
+      com: [-0.332000008, 0.0, 1.063025]
+      inertia: [0.00015676, 0.000014664, 0.00015517]

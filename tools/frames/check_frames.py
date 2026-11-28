@@ -56,6 +56,7 @@ DESC = {
                      'use_laptop_collision:=true laptop_open_angle_deg:=90.0 fix_base_to_world:=false'),
     'sim_arm': SIM + ' use_wheels:=false fix_base_to_world:=true gz_sensors:=false',
     'sim_drive': SIM + ' use_wheels:=true fix_base_to_world:=false gz_sensors:=true',
+    'sim_drive_nosensors': SIM + ' use_wheels:=true fix_base_to_world:=false gz_sensors:=false',
     'isaac_mg': ISAAC_MG,
     'isaac_mg_drive': ISAAC_MG + ' use_wheels:=true fix_base_to_world:=false',
     'isaac_ctrl_arm': ISAAC_CTRL + ' use_wheels:=false fix_base_to_world:=true',
@@ -105,6 +106,11 @@ E_SIM = [(L + 'ranger_xarm_gazebo/launch/sim.launch.py',
           r"' use_wheels:=', 'true' if drive_base else 'false',"),
          (L + 'ranger_xarm_gazebo/launch/sim.launch.py',
           r"' fix_base_to_world:=', 'false' if drive_base else 'true',")]
+# sim.launch.py's defaults that a row without sensors:= or odom_tf:= relies on.
+E_SIM_DEFAULTS = [(L + 'ranger_xarm_gazebo/launch/sim.launch.py', r"'sensors', default_value='false'"),
+                  (L + 'ranger_xarm_gazebo/launch/sim.launch.py', r"'odom_tf', default_value='true'"),
+                  (L + 'ranger_xarm_gazebo/launch/sim.launch.py',
+                   r"' gz_sensors:=', 'true' if sensors else 'false',")]
 E_MG = [(MGL, r"'ranger_xarm_mobile_base_wheels\.srdf' if drive_base and planning_frame == 'odom'\s*"
                r"else 'ranger_xarm\.srdf'"),
         (MGL, r"'planning_frame', default_value='odom'"),
@@ -165,6 +171,12 @@ ROWS = {
          'isaac_mg_drive', False, 'supported', E_SIM + E_MG),
     'G3 sim.launch.py drive_base:=true odom_tf:=false (no MoveIt)':
         (['sim_drive'], [('sim static', SIM_STATIC)], None, False, 'supported', E_SIM),
+    # The simulator with a driven base beside MoveIt started without drive_base: kept as a
+    # negative case, it must stay faulty.
+    'G4 sim.launch.py drive_base:=true + moveit.launch.py without drive_base '
+    '(README: start both with the same drive_base)':
+        (['sim_drive'], [('wheel_odometry', SIM_ODOM), ('sim static', SIM_STATIC)],
+         'isaac_mg', False, 'unsupported', E_MG),
     'I1 Isaac control.launch.py + moveit.launch.py (arm)':
         (['isaac_ctrl_arm'], [('isaac static', ISAAC_STATIC)], 'isaac_mg', False, 'supported',
          E_CTRL + E_MG),
@@ -174,9 +186,13 @@ ROWS = {
     'M1 fake_execution': (['fake_execution'], [], 'fake_execution', False, 'supported', E_MOCK[:1]),
     'M2 planning_demo': (['planning_demo'], [], 'planning_demo', False, 'supported', E_MOCK[1:2]),
     'M3 display': (['display'], [], None, False, 'supported', E_MOCK[2:]),
-    'T1 teleop simulation base:=true as of its main (MoveIt included without drive_base:=true)':
-        (['sim_drive'], [('wheel_odometry', SIM_ODOM), ('sim static', SIM_STATIC)],
-         'isaac_mg', False, 'pending', E_MG),
+    # The teleop stack's simulation with the base driven: sim.launch.py drive_base:=true
+    # (sensors:=true only with its cameras on, which is row G2) and move_group from
+    # moveit.launch.py drive_base:=true with no other argument (planning frame odom).
+    'T2 teleop simulation base:=true (sim.launch.py drive_base:=true, wheel odometry on TF; '
+    'moveit.launch.py drive_base:=true, planning frame odom)':
+        (['sim_drive_nosensors'], [('wheel_odometry', SIM_ODOM)],
+         'isaac_mg_drive', True, 'supported', E_SIM + E_SIM_DEFAULTS + E_MG),
 }
 # Not covered: Isaac's own sensor transform tree (isaac_sensors.py) beside control.launch.py's
 # os_sensor -> os_lidar static transform -- the prim names decide it; to confirm in Isaac.

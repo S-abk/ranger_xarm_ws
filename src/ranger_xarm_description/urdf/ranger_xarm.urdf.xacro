@@ -2,6 +2,7 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ranger_xarm6">
   <xacro:include filename="$(find ranger_xarm_description)/urdf/calibration.xacro"/>
   <xacro:include filename="$(find ranger_xarm_description)/urdf/planning_margin.xacro"/>
+  <xacro:include filename="$(find ranger_xarm_description)/urdf/mass_properties.generated.xacro"/>
   <xacro:include filename="$(find ranger_xarm_description)/urdf/static_geometry.xacro"/>
   <xacro:include filename="$(find ranger_xarm_description)/urdf/sensor_frames.xacro"/>
   <xacro:include filename="$(find ranger_xarm_description)/urdf/laptop_collision.xacro"/>
@@ -142,7 +143,7 @@
 
   <xacro:if value="$(arg use_static_geometry)">
     <xacro:ranger_static_geometry parent="base_link" use_collision="$(arg use_static_collision)"
-      wheels_modelled="$(arg use_wheels)"/>
+      wheels_modelled="$(arg use_wheels)" suspension="$(arg use_suspension)"/>
   </xacro:if>
 
   <link name="xarm_mount_link"/>

@@ -37,17 +37,44 @@ ARC_STEER = {'front_left': 23.6, 'front_right': 14.8,
              'rear_left': -23.6, 'rear_right': -14.8}
 
 
+def _graph(environ):
+    """The ROS graph and gz partition a process belongs to, from its environment."""
+    return (environ.get('ROS_DOMAIN_ID', '0') or '0', environ.get('GZ_PARTITION', ''))
+
+
 def stop_4wis():
-    me = os.getpid()
+    """Stop the 4WIS node of this probe's own simulation, and no other.
+
+    Only a process of this user, on this probe's ROS domain and gz partition, counts:
+    another simulation on the same machine keeps its node. More than one match is
+    refused rather than guessed at.
+    """
+    me, uid = os.getpid(), os.getuid()
+    mine = _graph(os.environ)
+    found = []
     for pid in os.listdir('/proc'):
         if not pid.isdigit() or int(pid) == me:
             continue
         try:
+            if os.stat(f'/proc/{pid}').st_uid != uid:
+                continue
             cmd = open(f'/proc/{pid}/cmdline', 'rb').read().replace(b'\0', b' ').decode()
+            if 'lib/ranger_xarm_gazebo/ranger_4wis_controller.py' not in cmd:
+                continue
+            env = open(f'/proc/{pid}/environ', 'rb').read().split(b'\0')
         except OSError:
             continue
-        if 'lib/ranger_xarm_gazebo/ranger_4wis_controller.py' in cmd:
-            os.kill(int(pid), signal.SIGKILL)
+        environ = dict(e.decode(errors='replace').split('=', 1) for e in env if b'=' in e)
+        if _graph(environ) == mine:
+            found.append(int(pid))
+    if not found:
+        sys.exit(f'no 4WIS node on ROS domain {mine[0]}, gz partition "{mine[1]}": start the '
+                 'simulation first, with the same ROS_DOMAIN_ID and GZ_PARTITION as this probe')
+    if len(found) > 1:
+        sys.exit(f'{len(found)} 4WIS nodes on ROS domain {mine[0]}, gz partition '
+                 f'"{mine[1]}": refusing to choose; stop the extra simulation first')
+    for pid in found:
+        os.kill(pid, signal.SIGKILL)
     time.sleep(1.0)
 
 

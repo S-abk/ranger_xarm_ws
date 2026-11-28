@@ -29,8 +29,9 @@
        otherwise show up as a phantom yaw bias in the drive kinematics.
 
        Note this is the UNLOADED radius. It is a CAD dimension, and CAD
-       does not sag: on the real platform the tyre carries roughly a
-       quarter of ~100 kg and deflects, so its loaded rolling radius is
+       does not sag: on the real platform each tyre carries about 33 kg
+       of the robot's ~132 kg (the rear ones more, the front ones less)
+       and deflects, so its loaded rolling radius is
        smaller than 100.036 mm by an amount nobody here has measured.
        Both simulators inherit the same optimism, because the tyre is a
        rigid collision sphere in each, so neither will ever show it.
@@ -84,23 +85,28 @@
        estimates to replace with measurements on the robot:
          travel     15 mm of droop, 25 mm of bump about the static ride
                     height (ground clearance is 105 mm);
-         spring     20 kN/m, a preloaded coil with 12.5 mm of static sag
-                    at ~25 kg per corner (4.5 Hz); its free length lies
-                    beyond full droop, so it pushes throughout the travel
-                    and never pulls a wheel up;
-         damping    570 N s/m, a damping ratio of ~0.4.
+         spring     20 kN/m, a preloaded coil (about 4.8 Hz at the front
+                    corners' 22 kg of sprung load, 3.8 Hz at the rear
+                    corners' 35 kg); its free length lies beyond full
+                    droop, so it pushes throughout the travel and never
+                    pulls a wheel up;
+         damping    570 N s/m, a damping ratio of 0.34 to 0.43.
        Stiff on purpose: at 8.2 kN/m the load moving onto the downhill
        wheels across a side slope rolled the body several more degrees,
        more when the springs reached their stops, enough to tip the robot
        while crabbing.
        The static ride height is unchanged: the joint's zero is where the
        axle was, and the spring's reference (springReference, gz; the drive
-       target, Isaac) is 12.5 mm into droop. Positive is compression (the
-       wheel up into the chassis). -->
+       target, Isaac) lies into droop by the rest setting of its axle. The
+       settings, one for the front axle and one for the rear because the
+       robot's centre of mass is aft of the middle, come from
+       config/mass_properties.yaml and put base_link at its stated height
+       with no pitch in gz. A setting beyond the droop limit is honoured by
+       gz (measured: a spring reference is not held to the joint's limits).
+       Positive is compression (the wheel up into the chassis). -->
   <xacro:macro name="ranger_wheels" params="parent:='base_link' ground_z:=-0.327028595 suspension:=true">
     <xacro:property name="susp_droop" value="0.015"/>
     <xacro:property name="susp_bump" value="0.025"/>
-    <xacro:property name="susp_sag" value="0.0125"/>
     <xacro:property name="susp_stiffness" value="20000.0"/>
     <xacro:property name="susp_damping" value="570.0"/>
 
@@ -110,20 +116,21 @@
     <xacro:property name="half_track" value="0.1852"/>
     <xacro:property name="axle_z" value="${ground_z + wheel_radius}"/>
 
-    <!-- 3 kg tyre+hub; knuckle is the steering casting above it. -->
-    <xacro:property name="wheel_mass" value="3.0"/>
-    <xacro:property name="steer_mass" value="1.0"/>
+    <!-- Tyre and hub; the knuckle is the steering casting above it. Masses
+         from config/mass_properties.yaml (mass_properties.generated.xacro). -->
+    <xacro:property name="wheel_mass" value="${mp_wheel_mass}"/>
+    <xacro:property name="steer_mass" value="${mp_knuckle_mass}"/>
 
-    <xacro:macro name="ranger_corner" params="name x y">
+    <xacro:macro name="ranger_corner" params="name x y rest">
       <!-- Steering knuckle: revolute about Z through the wheel centre. The
            +/-100 deg range is deliberately wider than the +/-90 deg the
            kinematics ever commands, so a wheel asked for exactly 90 deg
            does not sit on its limit and chatter. -->
       <link name="${name}_steer_link">
         <inertial>
-          <origin xyz="0 0 0.02"/>
+          <origin xyz="0 0 ${mp_knuckle_com_z}"/>
           <mass value="${steer_mass}"/>
-          <inertia ixx="0.0015" ixy="0" ixz="0" iyy="0.0015" iyz="0" izz="0.0020"/>
+          <inertia ixx="${mp_knuckle_ixx}" ixy="0" ixz="0" iyy="${mp_knuckle_iyy}" iyz="0" izz="${mp_knuckle_izz}"/>
         </inertial>
         <!-- The steering casting, cut from the CAD like the wheel below it.
              Without this the wheel turned under a knuckle that did not, and
@@ -143,8 +150,8 @@
         <link name="${name}_suspension_link">
           <inertial>
             <origin xyz="0 0 0"/>
-            <mass value="0.3"/>
-            <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0002"/>
+            <mass value="${mp_suspension_link_mass}"/>
+            <inertia ixx="${mp_suspension_link_ixx}" ixy="0" ixz="0" iyy="${mp_suspension_link_iyy}" iyz="0" izz="${mp_suspension_link_izz}"/>
           </inertial>
         </link>
         <joint name="${name}_suspension_joint" type="prismatic">
@@ -156,7 +163,7 @@
           <dynamics damping="${susp_damping}" friction="0.0"/>
         </joint>
         <gazebo reference="${name}_suspension_joint">
-          <springReference>${-susp_sag}</springReference>
+          <springReference>${-rest}</springReference>
           <springStiffness>${susp_stiffness}</springStiffness>
         </gazebo>
       </xacro:if>
@@ -278,10 +285,10 @@
       </plugin>
     </gazebo>
 
-    <xacro:ranger_corner name="front_left"  x="${ half_wheelbase}" y="${ half_track}"/>
-    <xacro:ranger_corner name="front_right" x="${ half_wheelbase}" y="${-half_track}"/>
-    <xacro:ranger_corner name="rear_left"   x="${-half_wheelbase}" y="${ half_track}"/>
-    <xacro:ranger_corner name="rear_right"  x="${-half_wheelbase}" y="${-half_track}"/>
+    <xacro:ranger_corner name="front_left"  x="${ half_wheelbase}" y="${ half_track}" rest="${mp_suspension_rest_front}"/>
+    <xacro:ranger_corner name="front_right" x="${ half_wheelbase}" y="${-half_track}" rest="${mp_suspension_rest_front}"/>
+    <xacro:ranger_corner name="rear_left"   x="${-half_wheelbase}" y="${ half_track}" rest="${mp_suspension_rest_rear}"/>
+    <xacro:ranger_corner name="rear_right"  x="${-half_wheelbase}" y="${-half_track}" rest="${mp_suspension_rest_rear}"/>
 
   </xacro:macro>
 

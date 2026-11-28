@@ -10,18 +10,23 @@ WORLD=$1; N=${2:-5}
 LOG=${LOG_DIR:-$(mktemp -d)}   # launch logs; override with LOG_DIR=
 source $WS/install/setup.bash >/dev/null 2>&1
 
-nohup ros2 launch ranger_xarm_gazebo sim.launch.py drive_base:=true sensors:=true \
+# Each launch runs in a process group of its own, so the teardown below reaches the
+# processes this script started and nothing else on the machine.
+own_group() { [ "$(ps -o pgid= -p "$1" 2>/dev/null | tr -d ' ')" = "$1" ]; }
+setsid nohup ros2 launch ranger_xarm_gazebo sim.launch.py drive_base:=true sensors:=true \
   wheel_drive:=${WHEEL_DRIVE:-velocity} \
   headless:=true odom_tf:=false world:=$WS/src/ranger_xarm_gazebo/worlds/$WORLD.sdf \
   > $LOG/${WORLD}_sim.log 2>&1 &
+SIM=$!
 for i in $(seq 1 60); do
   grep -q "Successfully switched controllers" $LOG/${WORLD}_sim.log 2>/dev/null && break
   sleep 5
 done
 sleep 15
 
-nohup ros2 launch ranger_xarm_bringup ekf_odom_imu.launch.py use_sim_time:=true \
+setsid nohup ros2 launch ranger_xarm_bringup ekf_odom_imu.launch.py use_sim_time:=true \
   > $LOG/${WORLD}_ekf.log 2>&1 &
+EKF=$!
 sleep 30
 
 echo "########## $WORLD, wheel_drive=${WHEEL_DRIVE:-velocity} (launch logs in $LOG) ##########"
@@ -32,37 +37,21 @@ for i in $(seq 1 $N); do
   timeout 200 python3 $S/ekf_score.py 2>&1 | tail -4
 done
 
-pkill -f "ros2 launch ranger_xarm_bringup ekf_odom_imu.launch.py"
-pkill -f "ros2 launch ranger_xarm_gazebo sim.launch.py"; sleep 3
-# Full executable paths, not bare names. pkill -f matches anywhere in a
-# command line, and a short pattern like "gz sim" also matches whatever
-# shell invoked this script if its own command line happens to mention
-# gz -- which once killed the caller mid-sweep and cut off the output.
-# "gz sim -r" is the server's own invocation (its process name is "ruby").
-PATTERNS=(
-  "ros2 launch ranger_xarm_gazebo sim.launch.py"
-  "gz sim -r"
-  "lib/ros_gz_bridge/parameter_bridge"
-  "lib/robot_state_publisher/robot_state_publisher"
-  "lib/tf2_ros/static_transform_publisher"
-  "lib/robot_localization/ekf_node"
-  "lib/ranger_xarm_gazebo/gz_clock_relay.py"
-  "lib/ranger_xarm_gazebo/wheel_odometry.py"
-  "lib/ranger_xarm_gazebo/ranger_4wis_controller.py"
-  "lib/ranger_xarm_bringup/imu_yaw_bias_corrector.py"
-  "lib/kiss_icp/kiss_icp_node"
-  "lib/ranger_xarm_bringup/lidar_odometry_relay.py"
-)
-for pat in "${PATTERNS[@]}"; do
-  pkill -9 -f "$pat"
+# Teardown: interrupt the two process groups this script started, give them 20 s
+# to exit, then kill what is left of them. A group is signalled only while its
+# leader is still the process recorded at launch and still leads that group.
+# No other process is signalled and no shared-memory file is deleted: those may
+# belong to other ROS processes on the machine.
+for g in $EKF $SIM; do own_group $g && kill -INT -- -$g 2>/dev/null; done
+for i in $(seq 1 20); do
+  alive=; for g in $EKF $SIM; do pgrep -g $g >/dev/null && alive=1; done
+  [ -z "$alive" ] && break
+  sleep 1
 done
-sleep 5
-# Every kill -9 leaves a Fast DDS shared-memory segment behind, and stale
-# ones serve ghost endpoints to the next run -- once, a controller_manager
-# that answered for a controller the live one had never loaded.
-rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_* 2>/dev/null
+for g in $EKF $SIM; do own_group $g && kill -KILL -- -$g 2>/dev/null; done
+sleep 2
 left=0
-for pat in "${PATTERNS[@]}"; do
-  left=$((left + $(pgrep -f "$pat" | grep -vx "$$" | wc -l)))
+for g in $EKF $SIM; do
+  left=$((left + $(pgrep -g $g | wc -l)))
 done
 echo "teardown: $left sim procs left"

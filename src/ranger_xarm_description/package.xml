@@ -16,6 +16,11 @@
   <exec_depend>xarm_description</exec_depend>
   <exec_depend>xarm_controller</exec_depend>
 
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>ament_index_python</test_depend>
+  <test_depend>python3-numpy</test_depend>
+  <test_depend>python3-yaml</test_depend>
+
   <export>
     <build_type>ament_cmake</build_type>
     <gazebo_ros gazebo_model_path="${prefix}/.."/>

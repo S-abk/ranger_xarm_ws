@@ -247,13 +247,22 @@ the arm alone, run `urdf_to_usd.py` with no arguments and start
 wheel corner rides on a sprung, damped prismatic joint (`ranger_wheels.xacro`),
 but AgileX publishes no suspension travel, spring rate or damping for the
 Ranger Mini 3.0, so the values are estimated, not measured: 15 mm of droop and
-25 mm of bump about the static ride height, a 20 kN/m spring with 12.5 mm of
-static sag, and 570 N s/m of damping. Behaviour that depends on how the
+25 mm of bump about the static ride height, a 20 kN/m spring preloaded per
+axle (12.3 mm front, 20.4 mm rear, set so that the base rests level at its
+stated height in gz), and 570 N s/m of damping. Behaviour that depends on how the
 wheels load and unload — side slopes, crests, one wheel lifting — is only as
 good as those numbers; replace them with measurements from your robot before
 trusting it there. To run with a rigid chassis instead, pass
 `use_suspension:=false` to both `urdf_to_usd.py` and `control.launch.py`
 (the USD and the controllers must agree on which joints exist).
+
+**Regenerate the USD after the masses change.** The USD carries the
+description's masses, inertias and suspension rest settings as they were when
+it was generated. They now come from
+`src/ranger_xarm_description/config/mass_properties.yaml` (75 kg base,
+44.5 kg structure); a USD generated before that, or copied elsewhere, keeps
+the old ones. Rerun step 1 (with `--force`) after a change. The Isaac path has
+not been run since the masses changed.
 
 ## Running the physical robot
 
@@ -378,11 +387,13 @@ set of options to pick from:
 
 **MoveIt plans and executes arm motion only with the base at rest, at least 2 s after it stops.**
 - What was shown, in simulation: 2 s after each stop, an obstacle's cells were within 0.03 m of where they were before the base drove 1 m out and back, and MoveIt refused the obstacle (`tools/smoke_test/obstacle_map.sh`).
-- What was not shown: that the map is right while the base moves. Over five runs of the same design, the worst count per run of stray cells off the obstacle while driving ranged from 18 to 136.
+- What was not shown: that the map is right while the base moves. Over six runs of the same design, all with `planning_frame:=odom`, the worst count per run of stray cells off the obstacle while driving ranged from 18 to 136. This count includes the far ground returns of the first open item below.
 
 **Open items, cause not established:**
 - Ground returns 3 m or more from the base were recorded 0.105–0.135 m high, and piled up at rest (up to 117 cells). It is not the chassis pitching: the measured pitch and roll explain only 3–16 % of them.
-- While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs over four runs, and exceeded 50 in 2 of them (53 and 58); at rest they were 0 in every leg. The 53 were a displaced copy of the obstacle in one snapshot, 0.15–0.2 m from where it was relative to the robot, gone by the next; the 58 and the others were not examined.
+- While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs, and exceeded 50 in 2 of them (53 and 58); at rest they were 0 in every leg. These were measured with `planning_frame:=odom`, in the last four of the six runs above, four legs each. Only those four runs recorded the far ground returns separately while driving, so the first two cannot be counted here. The 53 were a displaced copy of the obstacle in one snapshot, 0.15–0.2 m from where it was relative to the robot, gone by the next; the 58 and the others were not examined.
+
+**Known upstream fault:** with the obstacle map on, `move_group` can crash (segmentation fault in `PlanningScene::getOctomapMsg`) when the whole planning scene is requested while the map is updating; from MoveIt's source, its scene service reads the map without the map's lock (not confirmed with a debugger; `docs/TODO.md`).
 
 **Which planning frame to use** (`planning_frame` on `robot.launch.py`, `real_execution.launch.py` and the simulators' `moveit.launch.py`; it only matters while the base is running).
 
@@ -393,7 +404,7 @@ set of options to pick from:
 
 Either way, the arm plans and moves only with the base at rest (above). With the base off, both give `world`.
 
-At rest, in simulation, `base_footprint` placed the obstacle within 0.030 m and 0.034 m of where it was first mapped, in its two runs (the check's tolerance is 0.031 m), and MoveIt refused it in both.
+At rest, in simulation, `planning_frame:=base_footprint` missed the check's first at-rest tolerance in one of its two runs: it placed the obstacle 0.0335 m from where it was first mapped, against 0.031 m, at the first stop. In the other run it stayed within 0.030 m. MoveIt refused the obstacle in both runs.
 
 **On the real robot, use `planning_frame:=base_footprint` until the base driver's odometry fix has passed its hardware tests.** The wheel odometry has a known heading fault at sideways stops. A heading jump corrupts the `odom` map silently (next paragraph); the `base_footprint` map does not depend on odometry.
 
@@ -419,6 +430,7 @@ At rest, in simulation, `base_footprint` placed the obstacle within 0.030 m and 
 **Not supported.**
 - `real_execution.launch.py` beside `base_bringup.launch.py` starts two `robot_state_publisher`s. Use `robot.launch.py` for arm and base together.
 - `publish_odom_tf:=false` without the filter running leaves nothing publishing the base pose.
+- A simulator started with `drive_base:=true` beside `moveit.launch.py` started without it: start the two with the same `drive_base`.
 
 `tools/frames/check_frames.py` checks every supported combination for one parent per frame and one source per transform. It starts nothing.
 

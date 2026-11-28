@@ -4,6 +4,151 @@ Outstanding items found while bringing this workspace up in simulation.
 Each one names the repo it applies to, because some belong to upstream
 `xarm_ros2` rather than here.
 
+**Dated measurements.** The sections marked *(dated 2026-09-27)* were
+measured with the masses before 2026-11 (simulated robot 102.2 kg) and
+before three changes to the 4WIS controller: the Ranger's steering modes
+(2026-09-28), rest straight ahead with speed-error integration
+(2026-09-30), and integration over the measured tick (2026-10-30). They
+were not re-measured and no longer describe `main`, whatever the masses:
+`main` at `ad0d807`, still with the old masses, gives 0.24 % wheel-odometry
+error on `empty_ground` (not 0.13 %) and 80 % of the commanded yaw rate in
+the flat arc (not 100 %). Today's figures, before and after the masses
+changed, are in "Measured: before and after the mass correction".
+
+---
+
+## Open: the simulated springs act softer than their stated stiffness
+
+**Repo:** this one · **Files:** `urdf/ranger_wheels.xacro`,
+`config/mass_properties.yaml` (`ranger_xarm_description`)
+
+The suspension is described at 20,000 N/m per corner. Two measurements of
+this simulation, made by different methods, find it softer:
+
+- the base's rest state in gz (four corners, least squares over the
+  suspension positions, with the masses gz reports loading) fits
+  17,154 N/m, 0.86 of the stated value;
+- a downstream measurement of the same simulation, by another method,
+  gave 0.87 of the stated stiffness.
+
+The cause is not established. The stiffness is unchanged; the per-axle
+rest settings (`suspension_rest` in `mass_properties.yaml`) were trimmed
+from measured positions in gz, so they absorb whatever the cause is there.
+Isaac builds its springs from the same values and may not share the
+cause, so its base may rest a few millimetres off.
+
+## Open: the real base rests level under a rear-heavy load
+
+**Repo:** this one · **File:** `config/mass_properties.yaml`
+(`ranger_xarm_description`)
+
+On the robot, with everything on board, the chassis top face measures
+level front to rear within the reading error (steel rule, four corners,
+one measurement). The load is rear-heavy: the sprung corner loads are
+about 20-23 kg at the front and 35-38 kg at the rear. Equal springs at
+the described 20,000 N/m with equal preload would put the rear about
+7 mm lower. Either the real springs, their preload or the real load
+differ from the description. The simulation is set level by giving the
+rear a larger rest preload (20.4 mm against 12.3 mm), not by changing
+the stiffness. To settle: measure spring rate and preload per corner on
+the base. Not yet done.
+
+## Open: `move_group` crashes in `getOctomapMsg` with the obstacle map on
+
+**Repo:** upstream MoveIt (2.12.4 from the distribution), seen through
+`tools/smoke_test/obstacle_map.sh`
+
+With the obstacle map on, `move_group` has died with a segmentation fault
+(exit -11) inside `PlanningScene::getOctomapMsg`, while serving
+`/get_planning_scene`. The check's next scene request then returns
+nothing, and `octomap_cells.py` stops with "no planning scene". Seen
+**2 times in 5 runs** of the check (2026-11-27/28: once with the old
+masses, once with the corrected ones; each repeat passed). Separately,
+`move_group` exits -11 at shutdown in most runs, after the check has
+finished.
+
+Likely cause, from reading MoveIt 2.12.4's source at its tag (not shown
+with a debugger): the callback behind `/get_planning_scene`
+(`PlanningSceneMonitor::getPlanningSceneServiceCallback`,
+`planning_scene_monitor.cpp` line 668) takes the scene mutex (line 678)
+but not the octree's read lock. The point-cloud updater writes the octree
+under the octree's write lock alone (`pointcloud_octomap_updater.cpp`
+lines 362-383), and `PlanningScene::getOctomapMsg` serialises the tree
+with no lock of its own (`planning_scene.cpp` from line 916). The
+scene-publishing thread does take the read lock (lines 473, 502, 534). So
+a request for the whole scene while the map is updating can crash
+`move_group`. Upstream `main` (5399d29) and `jazzy` (daf89d3) still have
+it. To fix upstream, not here.
+
+Later: `octomap_cells.py` could read the map from the published scene
+topic instead of polling the service, which avoids the race in the check.
+
+## Measured: before and after the mass correction
+
+Both sets ran back to back on one machine, 2026-11-27 23:13 to
+2026-11-28 01:53, with the same scripts. The `main` side ran from its own
+worktree and install.
+
+- **Before.** Masses of `main` `ad0d807` (simulated robot 102.2 kg).
+- **After.** Masses of this change (132.4 kg; base 75 kg, structure
+  44.5 kg; rest settings 12.3 mm front, 20.4 mm rear).
+
+Each side: rest ×3, stop ×9, crab ×3 per surface, arc ×3 per surface,
+sweeps 5 trials (`empty_ground`, `low_friction`) or 10
+(`mixed_surface`, `rough_ground`), both smoke tests and the obstacle-map
+check. Real-time factor: 0.997-1.00 in the sessions without sensors;
+0.61-0.75 in the sweeps, varying by run on either side. The `low_friction`
+sweep and the first `mixed_surface` half were each rerun as a before/after
+pair, because their speed differed by more than 0.05; the pairs are used.
+
+| result | before (102.2 kg) | after (132.4 kg) | verdict |
+| --- | --- | --- | --- |
+| rest: `base_link` height against 0.327 m | +0.36 mm | 0.00 mm | target met |
+| rest: pitch / roll | 0.40 deg rear down / 0.04 deg left down | 0.01 deg rear down / 0.27 deg right down | target met (roll reported) |
+| stop from 0.2 m/s: distance / time | 0.020 m / 0.208 s | 0.019 m / 0.211 s | unchanged |
+| stop from 0.2 m/s: peak pitch change | 0.76 deg | **1.05 deg** | worse |
+| arc, flat / rough: yaw rate of command | 80 / 78 % | 80 / 78 % | unchanged |
+| arc, flat / rough: heading over the arc | 110.8 / 108.8 deg | 110.8 / 107.8 deg | unchanged (rough: -0.97 against a ±1.0 deg band) |
+| crab, `crab_timeline.py`, flat and `low_friction` | sweep 0.35 s, errors <= 0.01 deg | sweep 0.35 s, errors <= 0.02 deg | unchanged |
+| crab, `crab_probe`, odometry yaw error | +0.02 / +0.03 deg | **+0.09 deg** | worse |
+| sweep `empty_ground`: wheel odometry | 0.24 %, +0.33 deg | 0.17 %, +0.26 deg | better |
+| sweep `empty_ground`: EKF | 0.06 %, +0.04 deg | 0.05 %, **+0.09 deg** | yaw worse |
+| sweep `low_friction`: wheel odometry | 0.15 %, +0.21 deg | 0.13 %, +0.19 deg | unchanged |
+| sweep `low_friction`: EKF | 0.06 %, +0.02 deg | 0.08 %, **+0.15 deg** | yaw worse |
+| sweep `mixed_surface`: wheel odometry, median of trials >= 0.35 % | 0.43 % (10 of 10) | **1.02 %** (4 of 10) | worse * |
+| sweep `mixed_surface`: wheel odometry, median of trials below 0.60 % (not pre-specified) | 0.415 % (8 of 10) | 0.33 % (7 of 10) | not judged |
+| sweep `mixed_surface`: divergent trials (wheel > 0.60 %) | 2 of 10 (0.72, 2.06 %) | **3 of 10** (0.84, 1.20, 1.45 %) | worse (limit 3) |
+| sweep `mixed_surface`: EKF, trials <= 0.10 % (median) | 0.03 % | 0.03 % | unchanged |
+| sweep `rough_ground`: wheel odometry, tracked trials (median) | 1.97 % (8 of 10) | 2.14 % (8 of 10) | unchanged |
+| sweep `rough_ground`: EKF, all trials | 0.63 %, +0.08 deg | 0.69 %, +0.55 deg | unchanged (bands ±0.34 %, ±0.68 deg) |
+| smoke tests (arm, base) | PASS, PASS | PASS, PASS | unchanged |
+| obstacle-map check | PASS | PASS (second attempt; the first crashed, see above) | unchanged |
+
+\* The trials that follow the usual path scored 0.40 - 0.46 % before and
+0.31 - 0.34 % after, below the 0.35 % cut, so after the change the
+">= 0.35 %" group holds only the three divergent trials and one at
+0.55 %. The two medians therefore describe different sets of trials. The
+row is shown as the comparison judges it.
+
+The heavier robot pitches more when it stops, and the EKF and
+crab odometry headings drift by about 0.05-0.13 deg more. None of these
+was retuned: the controller, its limits, the springs and the worlds are
+unchanged. `mixed_surface` and `rough_ground` contain trials that leave
+the usual path from identical starts, on `main` too, so their means are
+not compared.
+
+**Reviewer's reading** (the results above are recorded as judged; this is
+an interpretation):
+- The stop pitch and the heading shifts are deterministic effects of the
+  true mass on unchanged springs.
+- `mixed_surface`, over every run of this measurement: `main` diverged in
+  3 of 25 trials, the corrected masses in 5 of 15. That is not
+  established as a difference (one-sided p 0.11). The limit of three was
+  set on an assumed rate of 1 in 20, which `main`'s own runs
+  contradicted.
+- The cluster-median row stays as judged, with its footnote. The median
+  of the trials below 0.60 % beside it was not pre-specified.
+
 ---
 
 ## Revert the xarm_ros2 pin once #180 merges
@@ -43,9 +188,11 @@ the centreline, 0.0538 m apart. Broken, they sit at -0.0269 / +0.0444 and
 `wheel_radius` is 0.100036 m, measured off the tyre in
 `ranger_mini_v3_cad.stl` and corroborated by AgileX's own `wheel_v3.dae`
 (node matrix 0.1003675). That is the **unloaded** radius: CAD does not
-sag. On the real platform each tyre carries roughly a quarter of ~100 kg
-and deflects, so the rolling radius under load is smaller by an amount
-nobody has measured.
+sag. On the real platform each tyre carries about 33 kg of the robot's
+~132 kg (estimated, not weighed: about 39-42 kg on each rear tyre and
+24-27 kg on each front one, since the centre of mass is about 6 cm aft of
+the middle) and deflects, so the rolling radius under load is smaller by
+an amount nobody has measured.
 
 Both simulators inherit the same optimism, because the tyre is a rigid
 collision sphere in each, so neither will ever reveal it.
@@ -77,9 +224,9 @@ payload varies enough to matter.
 - **What it did.** The moving parent wins in every listener, `world` drops out of the tree, and MoveIt's planning frame (`world`) was cut off. Its lidar obstacle map never built, and MoveIt planned through obstacles as if the space were free. Reproduced without hardware: every arrival order, a late listener, and after the odometry stopped.
 - **The fix.** The bring-up launch files weld the base only when nothing publishes its pose. With the base running, MoveIt plans in `odom` through a planar virtual joint (README, "Frames"). The two static `base_footprint -> base_link` publishers that duplicated the description's joint are gone.
 - **How it is checked.** `tools/frames/check_frames.py` checks every bring-up combination for one parent per frame. `tools/smoke_test/obstacle_map.sh` checks the obstacle map with the base driven in simulation.
-- **What it judges.** It checks the map at rest only, 2 s after the base stops, because arm motion is planned and executed only with the base at rest. While the base moves the map was not shown to be right: stray cells off the obstacle ranged from 18 to 136 over five runs. They are reported, not judged.
+- **What it judges.** It checks the map at rest only, 2 s after the base stops, because arm motion is planned and executed only with the base at rest. While the base moves the map was not shown to be right: the worst count per run of stray cells off the obstacle ranged from 18 to 136 over six runs, all with `planning_frame:=odom`, far ground returns included. They are reported, not judged.
 - **Open, cause not established (1).** Ground returns 3 m or more away recorded 0.105–0.135 m high, piling up at rest (up to 117 cells). Not pitch: the measured pitch and roll explain 3–16 % of them.
-- **Open, cause not established (2).** While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs over four runs and exceeded 50 in 2 (53 and 58); at rest they were 0 in every leg. The 53 were a displaced copy of the obstacle (0.15–0.2 m off) in one snapshot, gone by the next; the others were not examined.
+- **Open, cause not established (2).** While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs and exceeded 50 in 2 (53 and 58); at rest they were 0 in every leg. Measured with `planning_frame:=odom`, in the last four of those six runs, four legs each: only those four recorded the far ground returns separately while driving. The 53 were a displaced copy of the obstacle (0.15–0.2 m off) in one snapshot, gone by the next; the others were not examined.
 - The first combined bring-up on the robot has not been run yet.
 
 This is not the fault in the next entry. That one had `base_footprint` under `base_link`. Both show the same silence: tf2 replaces a parent without a warning.
@@ -91,6 +238,9 @@ This is not the fault in the next entry. That one had `base_footprint` under `ba
 - **`ranger_xarm_sensors` test `test_robot_includes_this_packages_camera_launch`** fails unless the workspace is built with `--symlink-install`. It compares the resolved camera launch path with the source tree, and a plain install copies the file. Also fails on `main`. Compare against the installed share directory instead, or skip without a symlink install.
 
 ## Resolved: the EKF heading fault was a two-parent TF tree
+
+*(Dated 2026-09-27: not re-measured, no longer describes `main`; see the
+note at the top.)*
 
 Kept because the failure mode is worth recognising, not because the bug
 is still open. (A different two-parent fault, `world` and `odom` over
@@ -137,6 +287,9 @@ measurement starts being fused, the target frame is the problem, not the
 sensor, the data or the filter.
 
 ## Resolved: what the EKF buys across the four gz surfaces
+
+*(Dated 2026-09-27: not re-measured, no longer describes `main`; see the
+note at the top.)*
 
 **Measured after the clock fix below**, all four worlds, five trials each
 from a teleported fixed start, `sensors:=true odom_tf:=false`, 0
@@ -216,6 +369,9 @@ the fix, none on any world after it.
 
 ## Resolved: the gz clock lagged simulation under load
 
+*(Dated 2026-09-27: not re-measured, no longer describes `main`; see the
+note at the top.)*
+
 **Repos:** both. **Fix:** `gz_clock_relay.py` replaces the stock clock
 bridge in `sim.launch.py`; `wheel_odometry.py` computes twist from wheel
 velocities.
@@ -274,6 +430,9 @@ edgeless variant. Eliminated as causes of the gz/Isaac gap: geometry and
 collider, Isaac wheel friction, Isaac timestep, PhysX contact offset.
 
 ## Diagnosed and fixed on rough ground: gz under-rotated in arcs because its wheel speed loop was too soft
+
+*(Dated 2026-09-27: not re-measured, no longer describes `main`; see the
+note at the top. The flat arc's 100 % below is 80 % on `main` today.)*
 
 **Probe:** `arc_probe.py` drives 6 s straight onto the terrain, then holds
 the scored arc (vx 0.30 m/s, wz 0.40 rad/s) and logs, per corner, target
@@ -491,6 +650,10 @@ Rough ground, paired from identical starts in fresh sessions: gate off
 pairs can resolve.
 
 ## Found: the crab yaw is wheel slip during the knuckle sweep, caused by the 4WIS controller
+
+*(Dated 2026-09-27: not re-measured, no longer describes `main`; see the
+note at the top. The power-10 sweep's 0.13 % on `empty_ground` below is
+0.24 % on `main` today.)*
 
 It is not an odometry-model error. Driving the steer and wheel
 controllers directly (`crab_probe.py`), wheel odometry is exact: a
@@ -756,15 +919,20 @@ declared as a double. It now uses dynamic typing and accepts either.
 A Gazebo server survived teardown for hours and served a second
 `/controller_manager` from its in-process `gz_ros2_control` -- find gz
 with `pgrep -f "gz sim"`, since its process name is `ruby`. Stale Fast DDS
-segments in `/dev/shm` compound it. `run_surface_sweep.sh` now does both
-between worlds, and matches processes by full executable path: its
-earlier bare patterns (`gz sim`, `sim.launch.py`) also matched whatever
-shell invoked it, and killed the caller mid-sweep. `grep` is unreliable on USD crate files. The earlier
+segments in `/dev/shm` compound it. `run_surface_sweep.sh` starts each
+launch in a process group of its own and tears down only those two groups
+(interrupt, 20 s, then kill), and reports how many of their processes are
+left. It no longer kills by name across the machine or deletes
+shared-memory files, since both reach processes it did not start: its
+earlier name patterns once killed the shell that invoked it mid-sweep. `grep` is unreliable on USD crate files. The earlier
 5-8x vertical-acceleration comparison was confounded by mismatched IMU
 rates. The per-segment "truth vx/vy" decomposition assumed world-frame
 ground-truth twist, which is unverified for either simulator.
 
 ## Added: KISS-ICP lidar odometry in the EKF (`lidar_odometry:=true`, off by default)
+
+*(Dated 2026-09-27: not re-measured, no longer describes `main`; see the
+note at the top.)*
 
 KISS-ICP runs on the Ouster cloud, `lidar_odometry_relay.py` re-anchors its
 pose into the EKF's odom frame, and the EKF fuses x, y and yaw as absolute
@@ -868,6 +1036,9 @@ that a raised arm does not enter the 0.8 m `lidar_min_range`.
 
 *(Isaac's `--terrain` and `--room` options are no longer in
 `ranger_xarm_isaac`; the gz worlds below remain.)*
+
+*(Dated 2026-09-27: not re-measured, no longer describes `main`; see the
+note at the top.)*
 
 The bump worlds sit on a lattice, and the wheels (y = +/-0.185 m) run
 between its rows (y = 0, +/-0.55 m, each +/-0.08 m wide). On the scored
