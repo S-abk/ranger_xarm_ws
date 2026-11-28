@@ -756,10 +756,12 @@ declared as a double. It now uses dynamic typing and accepts either.
 A Gazebo server survived teardown for hours and served a second
 `/controller_manager` from its in-process `gz_ros2_control` -- find gz
 with `pgrep -f "gz sim"`, since its process name is `ruby`. Stale Fast DDS
-segments in `/dev/shm` compound it. `run_surface_sweep.sh` now does both
-between worlds, and matches processes by full executable path: its
-earlier bare patterns (`gz sim`, `sim.launch.py`) also matched whatever
-shell invoked it, and killed the caller mid-sweep. `grep` is unreliable on USD crate files. The earlier
+segments in `/dev/shm` compound it. `run_surface_sweep.sh` starts each
+launch in a process group of its own and tears down only those two groups
+(interrupt, 20 s, then kill), and reports how many of their processes are
+left. It no longer kills by name across the machine or deletes
+shared-memory files, since both reach processes it did not start: its
+earlier name patterns once killed the shell that invoked it mid-sweep. `grep` is unreliable on USD crate files. The earlier
 5-8x vertical-acceleration comparison was confounded by mismatched IMU
 rates. The per-segment "truth vx/vy" decomposition assumed world-frame
 ground-truth twist, which is unverified for either simulator.

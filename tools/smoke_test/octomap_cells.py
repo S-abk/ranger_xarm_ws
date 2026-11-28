@@ -111,6 +111,9 @@ def robot_relative_cells(scene):
     frame is odom and the robot state carries the base pose, which takes the cells to the
     robot; without one the planning frame is the description's root.
     """
+    if scene is None:
+        raise RuntimeError('no planning scene: /get_planning_scene returned nothing in time '
+                           '(move_group not running, or it crashed: see its log)')
     om = scene.world.octomap
     cells, _ = decode(om.octomap)
     if len(cells) == 0:
