@@ -67,6 +67,9 @@ def stop_4wis():
         environ = dict(e.decode(errors='replace').split('=', 1) for e in env if b'=' in e)
         if _graph(environ) == mine:
             found.append(int(pid))
+    if not found:
+        sys.exit(f'no 4WIS node on ROS domain {mine[0]}, gz partition "{mine[1]}": start the '
+                 'simulation first, with the same ROS_DOMAIN_ID and GZ_PARTITION as this probe')
     if len(found) > 1:
         sys.exit(f'{len(found)} 4WIS nodes on ROS domain {mine[0]}, gz partition '
                  f'"{mine[1]}": refusing to choose; stop the extra simulation first')
