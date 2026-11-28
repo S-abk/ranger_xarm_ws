@@ -65,7 +65,23 @@ nothing, and `octomap_cells.py` stops with "no planning scene". Seen
 **2 times in 5 runs** of the check (2026-11-27/28: once with the old
 masses, once with the corrected ones; each repeat passed). Separately,
 `move_group` exits -11 at shutdown in most runs, after the check has
-finished. Not investigated here.
+finished.
+
+Likely cause, from reading MoveIt 2.12.4's source at its tag (not shown
+with a debugger): the callback behind `/get_planning_scene`
+(`PlanningSceneMonitor::getPlanningSceneServiceCallback`,
+`planning_scene_monitor.cpp` line 668) takes the scene mutex (line 678)
+but not the octree's read lock. The point-cloud updater writes the octree
+under the octree's write lock alone (`pointcloud_octomap_updater.cpp`
+lines 362-383), and `PlanningScene::getOctomapMsg` serialises the tree
+with no lock of its own (`planning_scene.cpp` from line 916). The
+scene-publishing thread does take the read lock (lines 473, 502, 534). So
+a request for the whole scene while the map is updating can crash
+`move_group`. Upstream `main` (5399d29) and `jazzy` (daf89d3) still have
+it. To fix upstream, not here.
+
+Later: `octomap_cells.py` could read the map from the published scene
+topic instead of polling the service, which avoids the race in the check.
 
 ## Measured: before and after the mass correction
 
@@ -100,6 +116,7 @@ pair, because their speed differed by more than 0.05; the pairs are used.
 | sweep `low_friction`: wheel odometry | 0.15 %, +0.21 deg | 0.13 %, +0.19 deg | unchanged |
 | sweep `low_friction`: EKF | 0.06 %, +0.02 deg | 0.08 %, **+0.15 deg** | yaw worse |
 | sweep `mixed_surface`: wheel odometry, median of trials >= 0.35 % | 0.43 % (10 of 10) | **1.02 %** (4 of 10) | worse * |
+| sweep `mixed_surface`: wheel odometry, median of trials below 0.60 % (not pre-specified) | 0.415 % (8 of 10) | 0.33 % (7 of 10) | not judged |
 | sweep `mixed_surface`: divergent trials (wheel > 0.60 %) | 2 of 10 (0.72, 2.06 %) | **3 of 10** (0.84, 1.20, 1.45 %) | worse (limit 3) |
 | sweep `mixed_surface`: EKF, trials <= 0.10 % (median) | 0.03 % | 0.03 % | unchanged |
 | sweep `rough_ground`: wheel odometry, tracked trials (median) | 1.97 % (8 of 10) | 2.14 % (8 of 10) | unchanged |
@@ -119,6 +136,18 @@ was retuned: the controller, its limits, the springs and the worlds are
 unchanged. `mixed_surface` and `rough_ground` contain trials that leave
 the usual path from identical starts, on `main` too, so their means are
 not compared.
+
+**Reviewer's reading** (the results above are recorded as judged; this is
+an interpretation):
+- The stop pitch and the heading shifts are deterministic effects of the
+  true mass on unchanged springs.
+- `mixed_surface`, over every run of this measurement: `main` diverged in
+  3 of 25 trials, the corrected masses in 5 of 15. That is not
+  established as a difference (one-sided p 0.11). The limit of three was
+  set on an assumed rate of 1 in 20, which `main`'s own runs
+  contradicted.
+- The cluster-median row stays as judged, with its footnote. The median
+  of the trials below 0.60 % beside it was not pre-specified.
 
 ---
 

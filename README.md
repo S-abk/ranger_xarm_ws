@@ -393,6 +393,8 @@ set of options to pick from:
 - Ground returns 3 m or more from the base were recorded 0.105–0.135 m high, and piled up at rest (up to 117 cells). It is not the chassis pitching: the measured pitch and roll explain only 3–16 % of them.
 - While the base moved, stray cells other than those ground returns appeared in 5 of 16 legs, and exceeded 50 in 2 of them (53 and 58); at rest they were 0 in every leg. These were measured with `planning_frame:=odom`, in the last four of the six runs above, four legs each. Only those four runs recorded the far ground returns separately while driving, so the first two cannot be counted here. The 53 were a displaced copy of the obstacle in one snapshot, 0.15–0.2 m from where it was relative to the robot, gone by the next; the 58 and the others were not examined.
 
+**Known upstream fault:** with the obstacle map on, `move_group` can crash (segmentation fault in `PlanningScene::getOctomapMsg`) when the whole planning scene is requested while the map is updating; from MoveIt's source, its scene service reads the map without the map's lock (not confirmed with a debugger; `docs/TODO.md`).
+
 **Which planning frame to use** (`planning_frame` on `robot.launch.py`, `real_execution.launch.py` and the simulators' `moveit.launch.py`; it only matters while the base is running).
 
 | `planning_frame` | where the obstacle map lives | use it when | do not use it when |
