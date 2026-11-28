@@ -247,13 +247,22 @@ the arm alone, run `urdf_to_usd.py` with no arguments and start
 wheel corner rides on a sprung, damped prismatic joint (`ranger_wheels.xacro`),
 but AgileX publishes no suspension travel, spring rate or damping for the
 Ranger Mini 3.0, so the values are estimated, not measured: 15 mm of droop and
-25 mm of bump about the static ride height, a 20 kN/m spring with 12.5 mm of
-static sag, and 570 N s/m of damping. Behaviour that depends on how the
+25 mm of bump about the static ride height, a 20 kN/m spring preloaded per
+axle (12.3 mm front, 20.4 mm rear, set so that the base rests level at its
+stated height in gz), and 570 N s/m of damping. Behaviour that depends on how the
 wheels load and unload — side slopes, crests, one wheel lifting — is only as
 good as those numbers; replace them with measurements from your robot before
 trusting it there. To run with a rigid chassis instead, pass
 `use_suspension:=false` to both `urdf_to_usd.py` and `control.launch.py`
 (the USD and the controllers must agree on which joints exist).
+
+**Regenerate the USD after the masses change.** The USD carries the
+description's masses, inertias and suspension rest settings as they were when
+it was generated. They now come from
+`src/ranger_xarm_description/config/mass_properties.yaml` (75 kg base,
+44.5 kg structure); a USD generated before that, or copied elsewhere, keeps
+the old ones. Rerun step 1 (with `--force`) after a change. The Isaac path has
+not been run since the masses changed.
 
 ## Running the physical robot
 
