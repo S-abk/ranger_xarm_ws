@@ -1,21 +1,19 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:macro name="ranger_static_geometry" params="parent:='base_link' use_collision:=true wheels_modelled:=false">
+  <!-- suspension: whether ranger_wheels.xacro models the suspension links;
+       it matters only with wheels_modelled, for how the base's mass is split. -->
+  <xacro:macro name="ranger_static_geometry" params="parent:='base_link' use_collision:=true wheels_modelled:=false suspension:=true">
     <link name="ranger_cad_link">
-      <!-- Chassis mass. Nothing in this description carried an <inertial> at
-           all, which means the whole platform was massless in physics: gz
-           falls back to a ~1 kg placeholder, so an 18 kg arm swinging on top
-           could shove the base around, and a massless wheel has no normal
-           force and therefore no traction. AgileX publish 63 kg for a loaded
-           Ranger Mini; 47 kg here leaves room for the 4x3 kg wheels and
-           4x1 kg steering knuckles in ranger_wheels.xacro. Inertia is the
-           solid-box equivalent of the ranger_envelope collision, taken about
-           the same centre. -->
-      <inertial>
-        <origin xyz="-0.001 0 -0.181436" rpy="0 0 0"/>
-        <mass value="47.0"/>
-        <inertia ixx="1.6086" ixy="0" ixz="0" iyy="3.1592" iyz="0" izz="3.5065"/>
-      </inertial>
+      <!-- Chassis mass, from the base's user manual: 75 kg with its wheels,
+           centre of gravity 0.214 m above the floor and 14.9 mm to one side
+           (the right, as read from the manual's drawing). Without modelled
+           wheels this link carries the whole base; with them it carries
+           what the wheel, knuckle and suspension links do not, so the base
+           has the same mass, centre and inertia either way. The values are
+           generated from config/mass_properties.yaml. A massless platform
+           drives badly in physics: gz falls back to a ~1 kg placeholder,
+           and a massless wheel has no normal force and so no traction. -->
+      <xacro:ranger_cad_inertial wheels="${wheels_modelled}" suspension="${suspension}"/>
       <!-- Which CAD to draw depends on whether the wheels are their own
            links. ranger_mini_v3_cad.stl is the whole vehicle with its
            wheels moulded in at zero steer, which is right when nothing
@@ -71,17 +69,13 @@
     </joint>
 
     <link name="custom_structure_link">
-      <!-- Gantry, arm pedestal, EcoFlow pack, laptop stand and control box.
-           Estimated, not weighed: the battery dominates at roughly half of
-           it. The centre of mass sits low and aft, where the pack and power
-           mount are, NOT at the gantry mid-height; putting it at the
-           geometric centre of the gantry would invent a tippy robot that
-           the real platform is not. -->
-      <inertial>
-        <origin xyz="-0.150 0 0.350" rpy="0 0 0"/>
-        <mass value="25.0"/>
-        <inertia ixx="3.134" ixy="0" ixz="0" iyy="3.817" iyz="0" izz="1.724"/>
-      </inertial>
+      <!-- Arm pedestal, gantry, battery pack, power mount, the arm's control
+           box, laptop stand and laptop, lidars and fasteners: 44.5 kg from a
+           parts list (CAD volumes times materials, labels and datasheets;
+           not weighed), centre 0.63 m above the floor and 0.18 m aft of
+           base_link, less the gantry camera's own inertial. The values are
+           generated from config/mass_properties.yaml. -->
+      <xacro:custom_structure_inertial/>
       <visual name="custom_structure_visual">
         <geometry>
           <mesh filename="package://ranger_xarm_description/meshes/visual/custom_structure_cad.stl" scale="0.001 0.001 0.001"/>
