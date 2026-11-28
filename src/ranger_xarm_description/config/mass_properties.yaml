@@ -58,10 +58,12 @@ corners:
 suspension_rest:
   # springReference = -setting, per axle (the spring stiffness and the droop limit are in
   # ranger_wheels.xacro and do not change). Chosen so that base_link rests at its stated height
-  # with no pitch in gz.
+  # with no pitch in gz: predicted from a linear-spring model at the rate gz was measured to
+  # behave with (front 0.0123, rear 0.0207), then each axle moved by its measured mean
+  # suspension deflection at rest, to the nearest 0.1 mm.
   front: 0.0123
-  rear: 0.0207
-  basis: "predicted from a linear-spring model at the rate gz was measured to behave with; not yet trimmed"
+  rear: 0.0204
+  basis: "trimmed in gz (empty_ground) from measured suspension positions"
 
 structure:
   # Everything fixed to base_link that is not the base, the arm or the gripper. Each part is

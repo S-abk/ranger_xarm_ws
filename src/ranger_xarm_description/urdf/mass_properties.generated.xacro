@@ -56,5 +56,5 @@
   <xacro:property name="mp_suspension_link_izz" value="0.0002"/>
   <!-- Suspension rest settings per axle: springReference = -setting. -->
   <xacro:property name="mp_suspension_rest_front" value="0.0123"/>
-  <xacro:property name="mp_suspension_rest_rear" value="0.0207"/>
+  <xacro:property name="mp_suspension_rest_rear" value="0.0204"/>
 </robot>
