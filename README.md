@@ -419,6 +419,7 @@ At rest, in simulation, `planning_frame:=base_footprint` missed the check's firs
 **Not supported.**
 - `real_execution.launch.py` beside `base_bringup.launch.py` starts two `robot_state_publisher`s. Use `robot.launch.py` for arm and base together.
 - `publish_odom_tf:=false` without the filter running leaves nothing publishing the base pose.
+- A simulator started with `drive_base:=true` beside `moveit.launch.py` started without it: start the two with the same `drive_base`.
 
 `tools/frames/check_frames.py` checks every supported combination for one parent per frame and one source per transform. It starts nothing.
 

@@ -171,6 +171,12 @@ ROWS = {
          'isaac_mg_drive', False, 'supported', E_SIM + E_MG),
     'G3 sim.launch.py drive_base:=true odom_tf:=false (no MoveIt)':
         (['sim_drive'], [('sim static', SIM_STATIC)], None, False, 'supported', E_SIM),
+    # The simulator with a driven base beside MoveIt started without drive_base: kept as a
+    # negative case, it must stay faulty.
+    'G4 sim.launch.py drive_base:=true + moveit.launch.py without drive_base '
+    '(README: start both with the same drive_base)':
+        (['sim_drive'], [('wheel_odometry', SIM_ODOM), ('sim static', SIM_STATIC)],
+         'isaac_mg', False, 'unsupported', E_MG),
     'I1 Isaac control.launch.py + moveit.launch.py (arm)':
         (['isaac_ctrl_arm'], [('isaac static', ISAAC_STATIC)], 'isaac_mg', False, 'supported',
          E_CTRL + E_MG),
@@ -187,11 +193,6 @@ ROWS = {
     'moveit.launch.py drive_base:=true, planning frame odom)':
         (['sim_drive_nosensors'], [('wheel_odometry', SIM_ODOM)],
          'isaac_mg_drive', True, 'supported', E_SIM + E_SIM_DEFAULTS + E_MG),
-    # The teleop stack's earlier command (MoveIt included without drive_base:=true), kept
-    # as a negative case: it must stay faulty.
-    'T1 sim.launch.py drive_base:=true + moveit.launch.py without drive_base:=true (mismatched)':
-        (['sim_drive'], [('wheel_odometry', SIM_ODOM), ('sim static', SIM_STATIC)],
-         'isaac_mg', False, 'unsupported', E_MG),
 }
 # Not covered: Isaac's own sensor transform tree (isaac_sensors.py) beside control.launch.py's
 # os_sensor -> os_lidar static transform -- the prim names decide it; to confirm in Isaac.
